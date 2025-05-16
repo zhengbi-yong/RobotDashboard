@@ -78,40 +78,42 @@ def delete_position_from_trajectory(index_to_delete):
         return f"删除点时发生错误: {e}", "danger"
 
 
-# --- 这是需要替换的函数 ---
 def get_display_for_recorded_positions_list(positions_list):
     if not positions_list:
         return "尚未记录或加载任何位置到活跃轨迹。"
     
     children = []
     for i, pos_data in enumerate(positions_list):
-        l_summary_parts = [f"{pos_data.get(j, 0.0):.2f}" for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL[:3]]
-        r_summary_parts = [f"{pos_data.get(j, 0.0):.2f}" for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL[:3]]
-        h_summary = f"Tilt:{pos_data.get('head_tilt_servo', 0):.0f}, Pan:{pos_data.get('head_pan_servo', 0):.0f}"
-        summary_str = f"点 {i+1}: L({', '.join(l_summary_parts)}...), R({', '.join(r_summary_parts)}...), H({h_summary})"
+        # Arm summary
+        l_arm_sum_parts = [f"{pos_data.get(j, 0.0):.2f}" for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL[:3]]
+        r_arm_sum_parts = [f"{pos_data.get(j, 0.0):.2f}" for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL[:3]]
+        # Head summary
+        h_sum = f"T:{pos_data.get('head_tilt_servo', 0):.0f},P:{pos_data.get('head_pan_servo', 0):.0f}"
         
-        # 为每个点创建删除按钮
+        # NEW: Hand summary (showing first 2 DoFs for brevity, adjust as needed)
+        l_hand_sum_parts = [f"{pos_data.get(dof, 0):.0f}" for dof in config.LEFT_HAND_DOF_NAMES[:2]]
+        r_hand_sum_parts = [f"{pos_data.get(dof, 0):.0f}" for dof in config.RIGHT_HAND_DOF_NAMES[:2]]
+        lh_sum = f"LH({','.join(l_hand_sum_parts)}...)"
+        rh_sum = f"RH({','.join(r_hand_sum_parts)}...)"
+
+        summary_str = f"点 {i+1}: L({','.join(l_arm_sum_parts)}...), R({','.join(r_arm_sum_parts)}...), H({h_sum}), {lh_sum}, {rh_sum}"
+        
         delete_button = dbc.Button(
             "删除此点",
-            id={'type': 'delete-trajectory-point-button', 'index': i}, # pattern-matching ID
-            color="danger",
-            size="sm",
-            className="ml-2" # 按钮左边距
+            id={'type': 'delete-trajectory-point-button', 'index': i},
+            color="danger", size="sm", className="ml-2" # Ensure ml-2 or me-2 for Bootstrap 5+
         )
         
-        # 将点摘要和删除按钮放在一行中
         point_display_item = dbc.Row([
             dbc.Col(html.Summary(summary_str), width="auto"),
             dbc.Col(delete_button, width="auto")
-        ], align="center", className="mb-1") # mb-1 是底边距
+        ], align="center", className="mb-1")
 
         children.append(html.Details([
-            point_display_item, # 使用包含删除按钮的行
-            html.Pre(json.dumps(pos_data, indent=2), style={'fontSize': '0.8em', 'marginLeft': '20px'}) # 详细信息缩进
+            point_display_item,
+            html.Pre(json.dumps(pos_data, indent=2), style={'fontSize': '0.8em', 'marginLeft': '20px'})
         ], open=False, className="mb-1"))
-    # print("Generated display children for trajectory list:", children) # 调试时可以取消注释
     return children
-# --- 函数替换结束 ---
 
 def get_current_trajectory():
     global recorded_positions

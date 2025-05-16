@@ -1,38 +1,55 @@
-# your_robot_dashboard/config.py
+# RobotDashboard/config.py
 
 import os
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ROS Configuration
 ROS_BRIDGE_HOST = '192.168.0.105' # CHANGE THIS IF NEEDED
 ROS_BRIDGE_PORT = 9090
 
-# ROS Topics and Message Types
+# --- ARM ---
 LEFT_ARM_CMD_TOPIC = '/l_arm/rm_driver/MoveJ_Cmd'
 RIGHT_ARM_CMD_TOPIC = '/r_arm/rm_driver/MoveJ_Cmd'
 ARM_MSG_TYPE = 'dual_arm_msgs/MoveJ'
-HEAD_SERVO_CMD_TOPIC = '/servo_control/move'
-HEAD_SERVO_MSG_TYPE = 'servo_ros/ServoMove'
 LEFT_ARM_STATE_TOPIC = '/l_arm/joint_states'
 RIGHT_ARM_STATE_TOPIC = '/r_arm/joint_states'
-HEAD_SERVO_STATE_TOPIC = '/servo_state'
 ARM_STATE_MSG_TYPE = 'sensor_msgs/JointState'
-HEAD_SERVO_STATE_MSG_TYPE = 'servo_ros/ServoAngle'
-
-# Joint Name Mappings and Servo Ranges
 LEFT_ARM_JOINT_NAMES_INTERNAL = [f'l_j{i+1}' for i in range(7)]
 RIGHT_ARM_JOINT_NAMES_INTERNAL = [f'r_j{i+1}' for i in range(7)]
+
+# --- HEAD ---
+HEAD_SERVO_CMD_TOPIC = '/servo_control/move'
+HEAD_SERVO_MSG_TYPE = 'servo_ros/ServoMove'
+HEAD_SERVO_STATE_TOPIC = '/servo_state'
+HEAD_SERVO_STATE_MSG_TYPE = 'servo_ros/ServoAngle'
 HEAD_SERVO_RANGES = {
     'head_tilt_servo': {'id': 1, 'min': 300, 'max': 600, 'neutral': 500},
     'head_pan_servo': {'id': 2, 'min': 0, 'max': 1000, 'neutral': 500}
 }
 
-# Trajectory Directory - 修改这里
-# 将 TRAJECTORY_DIR 定义为相对于当前 config.py 文件所在目录的路径
-TRAJECTORY_DIR = os.path.join(_THIS_DIR, "trajectories")
-os.makedirs(TRAJECTORY_DIR, exist_ok=True) # 确保这个目录存在
+# --- HAND --- NEW SECTION
+LEFT_HAND_CMD_TOPIC = '/l_arm/rm_driver/Hand_SetAngle'
+RIGHT_HAND_CMD_TOPIC = '/r_arm/rm_driver/Hand_SetAngle'
+HAND_MSG_TYPE = 'dual_arm_msgs/Hand_Angle' # Assumed based on your info
 
-# UI Slider Defaults & Ranges (example, you can expand this)
+# For UI and internal state tracking (6 DoFs per hand)
+# These are placeholder names, adjust if you have specific finger/joint names
+LEFT_HAND_DOF_NAMES = [f'l_hand_dof{i+1}' for i in range(6)]
+RIGHT_HAND_DOF_NAMES = [f'r_hand_dof{i+1}' for i in range(6)]
+
+# IMPORTANT: Define realistic min, max, and default for your hand DoFs
+MIN_HAND_ANGLE = 0      # Placeholder
+MAX_HAND_ANGLE = 1000   # Placeholder (int16 can go higher, but practically?)
+DEFAULT_HAND_ANGLE = 500 # Placeholder
+HAND_ANGLE_STEP = 10    # Placeholder
+HAND_MARKS_STEP = 200   # Placeholder for slider marks
+
+# Trajectory Directory
+TRAJECTORY_DIR = os.path.join(_THIS_DIR, "trajectories")
+os.makedirs(TRAJECTORY_DIR, exist_ok=True)
+
+# UI Slider Defaults & Ranges
 ARM_SLIDER_MIN = -170
 ARM_SLIDER_MAX = 170
 ARM_SLIDER_DEFAULT = 0

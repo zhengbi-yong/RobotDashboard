@@ -1,91 +1,150 @@
-# your_robot_dashboard/components/layout.py
+# RobotDashboard/components/layout.py
 
 from dash import dcc, html
 import dash_bootstrap_components as dbc
-from .. import config # Relative import
+from .. import config
 
 def create_layout():
+    # --- Left Arm Control Card ---
+    left_arm_card_content = [
+        dbc.CardHeader("左臂控制 (Left Arm Control)"),
+        dbc.CardBody([
+            *[html.Div([
+                html.Label(f"关节 {i+1} ({config.LEFT_ARM_JOINT_NAMES_INTERNAL[i]})"),
+                dcc.Slider(id=f"l_arm_slider_{i}", min=config.ARM_SLIDER_MIN, max=config.ARM_SLIDER_MAX, value=config.ARM_SLIDER_DEFAULT, step=config.ARM_SLIDER_STEP, marks={j: str(j) for j in range(int(config.ARM_SLIDER_MIN), int(config.ARM_SLIDER_MAX)+1, config.ARM_SLIDER_MARKS_STEP)}, tooltip={"placement": "top", "always_visible": False})
+            ], className="mb-3") for i in range(7)], # Increased margin-bottom
+            html.Div(dbc.Button("发送左臂指令", id="send-left-arm-button", color="primary", className="mt-2 w-100"), className="d-grid") # Button takes full width of its column
+        ])
+    ]
+
+    # --- Right Arm Control Card ---
+    right_arm_card_content = [
+        dbc.CardHeader("右臂控制 (Right Arm Control)"),
+        dbc.CardBody([
+            *[html.Div([
+                html.Label(f"关节 {i+1} ({config.RIGHT_ARM_JOINT_NAMES_INTERNAL[i]})"),
+                dcc.Slider(id=f"r_arm_slider_{i}", min=config.ARM_SLIDER_MIN, max=config.ARM_SLIDER_MAX, value=config.ARM_SLIDER_DEFAULT, step=config.ARM_SLIDER_STEP, marks={j: str(j) for j in range(int(config.ARM_SLIDER_MIN), int(config.ARM_SLIDER_MAX)+1, config.ARM_SLIDER_MARKS_STEP)}, tooltip={"placement": "top", "always_visible": False})
+            ], className="mb-3") for i in range(7)],
+            html.Div(dbc.Button("发送右臂指令", id="send-right-arm-button", color="primary", className="mt-2 w-100"), className="d-grid")
+        ])
+    ]
+
+    # --- Head Servo Control Card ---
+    head_servo_card_content = [
+        dbc.CardHeader("头部伺服控制 (Head Servo Control)"),
+        dbc.CardBody([
+            html.Div([
+                html.Label(f"头部俯仰 (ID {config.HEAD_SERVO_RANGES['head_tilt_servo']['id']})"),
+                dcc.Slider(id="head-tilt-slider", min=config.HEAD_SERVO_RANGES['head_tilt_servo']['min'], max=config.HEAD_SERVO_RANGES['head_tilt_servo']['max'], value=config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'], step=10, marks={j: str(j) for j in range(config.HEAD_SERVO_RANGES['head_tilt_servo']['min'], config.HEAD_SERVO_RANGES['head_tilt_servo']['max'] + 1, 100)}, tooltip={"placement": "top", "always_visible": False})
+            ], className="mb-3"),
+            html.Div([
+                html.Label(f"头部左右 (ID {config.HEAD_SERVO_RANGES['head_pan_servo']['id']})"),
+                dcc.Slider(id="head-pan-slider", min=config.HEAD_SERVO_RANGES['head_pan_servo']['min'], max=config.HEAD_SERVO_RANGES['head_pan_servo']['max'], value=config.HEAD_SERVO_RANGES['head_pan_servo']['neutral'], step=10, marks={j: str(j) for j in range(config.HEAD_SERVO_RANGES['head_pan_servo']['min'], config.HEAD_SERVO_RANGES['head_pan_servo']['max'] + 1, 200)}, tooltip={"placement": "top", "always_visible": False})
+            ], className="mb-3"),
+            html.Div(dbc.Button("发送头部指令", id="send-head-servo-button", color="primary", className="mt-2 w-100"), className="d-grid")
+        ])
+    ]
+
+    # --- ROS Connection and Status ---
+    ros_connection_section = dbc.Card([
+        dbc.CardHeader("ROS 连接状态 (ROS Connection)"),
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col(dbc.Button("连接/重连 ROS (Connect/Reconnect ROS)", id="connect-ros-button", color="success", className="w-100"), width=12, md=4, className="mb-2 mb-md-0 d-grid"),
+                dbc.Col(html.Div(id="ros-connection-status-display", children=f"状态: 未连接", className="align-self-center text-md-left text-center p-2 border rounded bg-light"), width=12, md=8)
+            ], align="center")
+        ])
+    ], className="mb-4")
+
+
+    # --- Current Joint States Card ---
+    joint_states_card_content = [
+        dbc.CardHeader("当前关节状态 (Current Joint States)"),
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col(dbc.Button("手动刷新", id="refresh-states-button", color="info", outline=True, size="sm", className="me-2"), width="auto"),
+                dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, size="sm"), width="auto")
+            ], className="mb-3 justify-content-start"),
+            dbc.Row([
+                dbc.Col([html.H5("手臂关节 (rad):"), html.Pre(id="arm-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '200px', 'overflowY': 'auto'})], md=6, className="mb-3 mb-md-0"),
+                dbc.Col([html.H5("头部伺服 (raw):"), html.Pre(id="head-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '100px', 'overflowY': 'auto'})], md=6)
+            ])
+        ])
+    ]
+
+    # --- Trajectory Management Card ---
+    trajectory_management_card_content = [
+        dbc.CardHeader("轨迹管理 (Trajectory Management)"),
+        dbc.CardBody([
+            html.Div(id="action-feedback-display", className="mb-3"), # Feedback at the top of this section
+            dbc.Row([
+                dbc.Col(dbc.Button("记录当前位置", id="record-position-button", color="success", className="w-100"), width=12, sm=6, md=4, className="mb-2 d-grid"),
+            ], className="mb-3"),
+            dbc.Form([ # Using dbc.Form for better structure of input groups
+                dbc.Row([
+                    dbc.Col(dcc.Input(id="trajectory-filename-input", type="text", placeholder="输入轨迹名称...", className="form-control"), width=12, sm=6, md=4, className="mb-2"),
+                    dbc.Col(dbc.Button("保存活跃轨迹", id="save-trajectory-button", color="primary", className="w-100"), width=12, sm=6, md=4, className="mb-2 d-grid")
+                ], className="mb-2 align-items-center"),
+                dbc.Row([
+                    dbc.Col(dcc.Dropdown(id="trajectory-select-dropdown", placeholder="选择已保存轨迹...", style={"width": "100%"}), width=12, sm=6, md=4, className="mb-2"), # Dropdown takes full col width
+                    dbc.Col(dbc.Button("刷新列表", id="refresh-trajectory-list-button", color="secondary", outline=True, className="w-100"), width=12, sm=3, md=2, className="mb-2 d-grid"),
+                    dbc.Col(dbc.Button("加载选中轨迹", id="load-selected-trajectory-button", color="info", className="w-100"), width=12, sm=3, md=2, className="mb-2 d-grid")
+                ], className="mb-3 align-items-center")
+            ]),
+            html.H5("活跃轨迹中的点 (Active Trajectory Points)", className="mt-3"),
+            html.Div(id="recorded-positions-count-display", children="尚未记录或加载任何位置。", className="mb-2 text-muted"),
+            html.Div(id="recorded-positions-list-display", style={'maxHeight': '300px', 'overflowY': 'auto', 'border': '1px solid #eee', 'padding': '10px', 'backgroundColor': '#f9f9f9', 'borderRadius': '5px'})
+        ])
+    ]
+    
+    # --- Trajectory Playback Card ---
+    trajectory_playback_card_content = [
+        dbc.CardHeader("轨迹回放 (Trajectory Playback)"),
+        dbc.CardBody([
+            dbc.Row([
+                 dbc.Col([html.Label("回放速度 (MoveJ speed):", className="form-label"), dcc.Slider(id="playback-speed-slider", min=0.1, max=1.0, value=config.PLAYBACK_SPEED_DEFAULT, step=0.05, marks={i/10: str(i/10) for i in range(1, 11, 1)}, tooltip={"placement": "top", "always_visible": False})], md=6, className="mb-3"),
+                 dbc.Col([html.Label("点间延迟 (秒):", className="form-label"), dcc.Slider(id="playback-delay-slider", min=0.1, max=5.0, value=config.PLAYBACK_DELAY_DEFAULT, step=0.1, marks={round(i*0.5,1): str(round(i*0.5,1)) for i in range(1, 11)}, tooltip={"placement": "top", "always_visible": False})], md=6, className="mb-3")
+            ]),
+            dbc.Row([
+                dbc.Col(dbc.Button("回放一次", id="replay-once-button", color="warning", className="me-2 w-100"), width=12, sm=4, className="mb-2 d-grid"),
+                dbc.Col(dbc.Button("开始连续回放", id="start-continuous-replay-button", color="success", className="me-2 w-100"), width=12, sm=4, className="mb-2 d-grid"),
+                dbc.Col(dbc.Button("停止连续回放", id="stop-continuous-replay-button", color="danger", disabled=True, className="w-100"), width=12, sm=4, className="mb-2 d-grid")
+            ], className="justify-content-start")
+        ])
+    ]
+
+
     layout = dbc.Container([
         dcc.Store(id='playback-state-store', data={'is_repeating': False, 'current_index': 0, 'trajectory_for_repeat': []}),
         dcc.Interval(id='continuous-playback-interval', interval=2000, n_intervals=0, disabled=True),
-        html.H1("机器人关节控制与状态监控 (Dash)"),
-        dbc.Row([
-            dbc.Col([
-                html.Button("Connect to ROS", id="connect-ros-button", n_clicks=0, className="btn btn-primary mb-2"),
-                html.Div(id="ros-connection-status-display", children=f"Status: Disconnected") # Initial status
-            ])
-        ]),
-        html.P("请注意：浏览器刷新页面可能会导致已记录但未保存的位置数据丢失。", className="alert alert-warning"),
         dcc.Interval(id='interval-ros-status-update', interval=1000, n_intervals=0),
         dcc.Interval(id='interval-joint-state-update', interval=500, n_intervals=0),
+
+        dbc.Row(dbc.Col(html.H1("机器人控制与监控面板 (Robot Control & Monitoring)", className="text-center my-4"))), # Page Title
+
+        ros_connection_section, # ROS Connection status at the top
+
+        html.Hr(className="my-4"),
+
         dbc.Row([
             dbc.Col([
-                html.H3("左臂控制"),
-                *[html.Div([
-                    html.Label(f"左臂关节 {i+1} ({config.LEFT_ARM_JOINT_NAMES_INTERNAL[i]})"),
-                    dcc.Slider(id=f"l_arm_slider_{i}", min=config.ARM_SLIDER_MIN, max=config.ARM_SLIDER_MAX, value=config.ARM_SLIDER_DEFAULT, step=config.ARM_SLIDER_STEP, marks={j: str(j) for j in range(int(config.ARM_SLIDER_MIN), int(config.ARM_SLIDER_MAX)+1, config.ARM_SLIDER_MARKS_STEP)}, tooltip={"placement": "top", "always_visible": False})
-                ], className="mb-2") for i in range(7)],
-                html.Button("发送左臂控制指令", id="send-left-arm-button", n_clicks=0, className="btn btn-info mt-2")
-            ], md=4),
+                dbc.Card(left_arm_card_content, className="mb-4 shadow-sm"),
+                dbc.Card(right_arm_card_content, className="mb-4 shadow-sm")
+            ], md=4), # Left column for arm controls
             dbc.Col([
-                html.H3("右臂控制"),
-                *[html.Div([
-                    html.Label(f"右臂关节 {i+1} ({config.RIGHT_ARM_JOINT_NAMES_INTERNAL[i]})"),
-                    dcc.Slider(id=f"r_arm_slider_{i}", min=config.ARM_SLIDER_MIN, max=config.ARM_SLIDER_MAX, value=config.ARM_SLIDER_DEFAULT, step=config.ARM_SLIDER_STEP, marks={j: str(j) for j in range(int(config.ARM_SLIDER_MIN), int(config.ARM_SLIDER_MAX)+1, config.ARM_SLIDER_MARKS_STEP)}, tooltip={"placement": "top", "always_visible": False})
-                ], className="mb-2") for i in range(7)],
-                html.Button("发送右臂控制指令", id="send-right-arm-button", n_clicks=0, className="btn btn-info mt-2")
-            ], md=4),
+                dbc.Card(head_servo_card_content, className="mb-4 shadow-sm"),
+                dbc.Card(joint_states_card_content, className="mb-4 shadow-sm")
+            ], md=4), # Middle column for head and states
             dbc.Col([
-                html.H3("头部伺服控制"),
-                html.Div([
-                    html.Label(f"头部俯仰 (ID {config.HEAD_SERVO_RANGES['head_tilt_servo']['id']})"),
-                    dcc.Slider(id="head-tilt-slider", min=config.HEAD_SERVO_RANGES['head_tilt_servo']['min'], max=config.HEAD_SERVO_RANGES['head_tilt_servo']['max'], value=config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'], step=10, marks={j: str(j) for j in range(config.HEAD_SERVO_RANGES['head_tilt_servo']['min'], config.HEAD_SERVO_RANGES['head_tilt_servo']['max'] + 1, 100)}, tooltip={"placement": "top", "always_visible": False})
-                ], className="mb-2"),
-                html.Div([
-                    html.Label(f"头部左右 (ID {config.HEAD_SERVO_RANGES['head_pan_servo']['id']})"),
-                    dcc.Slider(id="head-pan-slider", min=config.HEAD_SERVO_RANGES['head_pan_servo']['min'], max=config.HEAD_SERVO_RANGES['head_pan_servo']['max'], value=config.HEAD_SERVO_RANGES['head_pan_servo']['neutral'], step=10, marks={j: str(j) for j in range(config.HEAD_SERVO_RANGES['head_pan_servo']['min'], config.HEAD_SERVO_RANGES['head_pan_servo']['max'] + 1, 200)}, tooltip={"placement": "top", "always_visible": False})
-                ], className="mb-2"),
-                html.Button("发送头部伺服控制指令", id="send-head-servo-button", n_clicks=0, className="btn btn-info mt-2")
-            ], md=4),
+                dbc.Card(trajectory_management_card_content, className="mb-4 shadow-sm"),
+                dbc.Card(trajectory_playback_card_content, className="mb-4 shadow-sm")
+            ], md=4)  # Right column for trajectory and playback
         ]),
-        html.Hr(),
-        html.H3("当前关节状态"),
-        dbc.Row([
-            dbc.Col(html.Button("手动刷新状态显示", id="refresh-states-button", n_clicks=0, className="btn btn-sm btn-secondary mb-2"), width="auto"),
-            dbc.Col(html.Button("同步滑块至当前状态", id="sync-sliders-to-state-button", n_clicks=0, className="btn btn-sm btn-outline-info mb-2"), width="auto")
-        ], className="mb-3 justify-content-start"),
-        dbc.Row([
-            dbc.Col([html.H5("手臂关节 (rad):"), html.Pre(id="arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '200px', 'overflowY': 'auto', 'border': '1px solid #ccc', 'padding': '10px'})], md=6),
-            dbc.Col([html.H5("头部伺服 (raw value):"), html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '100px', 'overflowY': 'auto', 'border': '1px solid #ccc', 'padding': '10px'})], md=6)
-        ]),
-        html.Hr(),
-        html.H3("位置记录、保存与加载 (活跃轨迹管理)"),
-        html.Div(id="action-feedback-display", className="mb-2"),
-        dbc.Row([
-            dbc.Col(html.Button("记录当前位置到活跃轨迹", id="record-position-button", n_clicks=0, className="btn btn-success mr-2"), width="auto"),
-        ], className="mb-2 justify-content-start"),
-        dbc.Row([
-            dbc.Col(dcc.Input(id="trajectory-filename-input", type="text", placeholder="输入轨迹名称 (例如 my_sequence)", className="mr-2", style={"width": "250px"}), width="auto"),
-            dbc.Col(html.Button("保存活跃轨迹", id="save-trajectory-button", n_clicks=0, className="btn btn-primary"), width="auto")
-        ], className="mb-2 justify-content-start"),
-        dbc.Row([
-            dbc.Col(dcc.Dropdown(id="trajectory-select-dropdown", placeholder="选择已保存的轨迹...", className="mr-2", style={"width": "250px"}), width="auto"),
-            dbc.Col(html.Button("刷新轨迹列表", id="refresh-trajectory-list-button", n_clicks=0, className="btn btn-secondary mr-2"), width="auto"),
-            dbc.Col(html.Button("加载选中轨迹到活跃区", id="load-selected-trajectory-button", n_clicks=0, className="btn btn-info"), width="auto"),
-        ],className="mb-3 justify-content-start"),
-        html.Hr(),
-        html.H3("活跃轨迹回放"),
-        dbc.Row([
-             dbc.Col([html.Label("回放速度 (MoveJ speed param, 0.1 - 1.0):"), dcc.Slider(id="playback-speed-slider", min=0.1, max=1.0, value=config.PLAYBACK_SPEED_DEFAULT, step=0.05, marks={i/10: str(i/10) for i in range(1, 11, 1)}, tooltip={"placement": "top", "always_visible": False})], md=6),
-             dbc.Col([html.Label("点间延迟 (秒, 0.1 - 5.0):"), dcc.Slider(id="playback-delay-slider", min=0.1, max=5.0, value=config.PLAYBACK_DELAY_DEFAULT, step=0.1, marks={round(i*0.5,1): str(round(i*0.5,1)) for i in range(1, 11)}, tooltip={"placement": "top", "always_visible": False})], md=6)
-        ]),
-        dbc.Row([
-            dbc.Col(html.Button("回放活跃轨迹 (一次)", id="replay-once-button", n_clicks=0, className="btn btn-warning mr-2"), width="auto"),
-            dbc.Col(html.Button("开始连续回放", id="start-continuous-replay-button", n_clicks=0, className="btn btn-success mr-2"), width="auto"),
-            dbc.Col(html.Button("停止连续回放", id="stop-continuous-replay-button", n_clicks=0, className="btn btn-danger", disabled=True), width="auto")
-        ], className="mb-2 justify-content-start"),
-        html.H4("活跃轨迹中的位置点 (当前可操作)"),
-        html.Div(id="recorded-positions-count-display", children="尚未记录或加载任何位置到活跃轨迹。"),
-        html.Div(id="recorded-positions-list-display", style={'maxHeight': '300px', 'overflowY': 'auto', 'border': '1px solid #eee', 'padding': '10px', 'backgroundColor': '#f9f9f9'})
-    ], fluid=True)
+        
+        # Footer or a small note (optional)
+        html.Footer(
+            dbc.Row(dbc.Col(html.P("请注意：浏览器刷新页面可能会导致已记录但未保存的位置数据丢失。", className="text-muted text-center small mt-5"))),
+        )
+
+    ], fluid=True, className="py-3 bg-light") # Added padding to container and a light background
     return layout

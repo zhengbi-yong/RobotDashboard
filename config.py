@@ -41,7 +41,7 @@ RIGHT_HAND_DOF_NAMES = [f'r_hand_dof{i+1}' for i in range(6)]
 # IMPORTANT: Define realistic min, max, and default for your hand DoFs
 MIN_HAND_ANGLE = 0      # Placeholder
 MAX_HAND_ANGLE = 1000   # Placeholder (int16 can go higher, but practically?)
-DEFAULT_HAND_ANGLE = 500 # Placeholder
+DEFAULT_HAND_ANGLE = 1000 # Placeholder
 HAND_ANGLE_STEP = 10    # Placeholder
 HAND_MARKS_STEP = 200   # Placeholder for slider marks
 

@@ -252,8 +252,6 @@ def register_callbacks(app):
         return html.Div(feedback_msg, className=f"alert alert-{feedback_type} mt-2"), count_display_text, list_display_children, new_playback_store_data
 
     # --- handle_record_save_load_trajectory ---
-    # No direct code change needed here IF record_current_position in traj_manager
-    # correctly picks up hand values from latest_joint_states (which it should now).
     @app.callback(
         [Output("action-feedback-display", "children", allow_duplicate=True),
          Output("recorded-positions-count-display", "children", allow_duplicate=True),
@@ -264,12 +262,18 @@ def register_callbacks(app):
          Input("load-selected-trajectory-button", "n_clicks")],
         [State("trajectory-filename-input", "value"),
          State("trajectory-select-dropdown", "value"),
-         State("playback-state-store", "data")],
+         State("playback-state-store", "data"),
+         # ADD STATES FOR HAND SLIDERS
+         *[State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))],
+         *[State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))]
+        ],
         prevent_initial_call=True
     )
     def handle_record_save_load_trajectory(n_record, n_save, n_load,
                                            trajectory_filename, selected_trajectory_path,
-                                           current_playback_state):
+                                           current_playback_state,
+                                           *hand_slider_values # This will capture all hand slider states
+                                           ):
         ctx = callback_context
         button_id = ctx.triggered_id
         if not button_id:
@@ -278,17 +282,32 @@ def register_callbacks(app):
         feedback_msg = ""
         feedback_type = "info"
         new_playback_store_data = current_playback_state.copy()
-        active_trajectory_after_action = []
+        # Initialize active_trajectory_after_action. It will be updated based on the action.
+        active_trajectory_after_action = traj_manager.get_current_trajectory()
+
+
+        # Unpack hand slider values
+        num_left_hand_dofs = len(config.LEFT_HAND_DOF_NAMES)
+        left_hand_ui_values = list(hand_slider_values[:num_left_hand_dofs])
+        right_hand_ui_values = list(hand_slider_values[num_left_hand_dofs:])
+
 
         if button_id == "record-position-button":
             if not n_record: return no_update, no_update, no_update, no_update
-            # latest_joint_states in ros_handler should now contain commanded hand values
-            feedback_msg = traj_manager.record_current_position(ros_handler.latest_joint_states)
+            
+            feedback_msg = traj_manager.record_current_position(
+                ros_handler.latest_joint_states,
+                left_hand_ui_values,            
+                right_hand_ui_values            
+            )
             active_trajectory_after_action = traj_manager.get_current_trajectory()
             feedback_type = "success"
         elif button_id == "save-trajectory-button":
             if not n_save: return no_update, no_update, no_update, no_update
+            # Call save_trajectory with only the filename
+            # It will use the globally managed 'recorded_positions' within trajectory_manager
             feedback_msg, feedback_type = traj_manager.save_trajectory(trajectory_filename)
+            # The active trajectory in the manager is what was saved.
             active_trajectory_after_action = traj_manager.get_current_trajectory()
         elif button_id == "load-selected-trajectory-button":
             if not n_load: return no_update, no_update, no_update, no_update
@@ -301,10 +320,10 @@ def register_callbacks(app):
         new_playback_store_data['current_index'] = 0
 
         count_display_text = f"活跃轨迹中包含 {len(active_trajectory_after_action)} 个位置点。" if active_trajectory_after_action else "活跃轨迹为空。"
-        list_display_children = traj_manager.get_display_for_recorded_positions_list(active_trajectory_after_action) # Will show hands
+        list_display_children = traj_manager.get_display_for_recorded_positions_list(active_trajectory_after_action)
         
         return html.Div(feedback_msg, className=f"alert alert-{feedback_type} mt-2"), count_display_text, list_display_children, new_playback_store_data
-
+    
     # --- Replay Callbacks ---
     @app.callback(
         Output("action-feedback-display", "children", allow_duplicate=True),

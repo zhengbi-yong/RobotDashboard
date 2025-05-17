@@ -12,16 +12,42 @@ recorded_positions = []
 
 # ... (record_current_position, save_trajectory, load_trajectory, get_trajectory_files_options 函数保持不变) ...
 
-def record_current_position(latest_joint_states_dict):
+def record_current_position(latest_joint_states_dict, left_hand_ui_values, right_hand_ui_values):
+    """
+    Records the current robot position.
+    Arm and head data are taken from latest_joint_states_dict.
+    Hand data is taken directly from the provided UI slider values.
+    """
     global recorded_positions
     current_pos_to_record = {}
-    all_joint_keys = (config.LEFT_ARM_JOINT_NAMES_INTERNAL +
-                      config.RIGHT_ARM_JOINT_NAMES_INTERNAL +
-                      list(config.HEAD_SERVO_RANGES.keys()))
-    for key in all_joint_keys:
-        current_pos_to_record[key] = latest_joint_states_dict.get(key, 0.0)
-    recorded_positions.append(current_pos_to_record.copy())
-    return f"已记录位置 {len(recorded_positions)} 到当前活跃轨迹。"
+
+    # 1. Record Arm and Head states from latest_joint_states_dict
+    arm_and_head_keys = (config.LEFT_ARM_JOINT_NAMES_INTERNAL +
+                         config.RIGHT_ARM_JOINT_NAMES_INTERNAL +
+                         list(config.HEAD_SERVO_RANGES.keys()))
+    for key in arm_and_head_keys:
+        current_pos_to_record[key] = latest_joint_states_dict.get(key, 0.0) # Using a default of 0.0 if not found
+
+    # 2. Record Left Hand states from UI slider values
+    for i, dof_name in enumerate(config.LEFT_HAND_DOF_NAMES):
+        if i < len(left_hand_ui_values):
+            current_pos_to_record[dof_name] = float(left_hand_ui_values[i]) # Ensure it's a float
+        else:
+            # Fallback if not enough values were passed, though this shouldn't happen with correct callback
+            current_pos_to_record[dof_name] = float(config.DEFAULT_HAND_ANGLE)
+            print(f"Warning: Missing UI value for left hand DOF {dof_name}, using default.")
+
+    # 3. Record Right Hand states from UI slider values
+    for i, dof_name in enumerate(config.RIGHT_HAND_DOF_NAMES):
+        if i < len(right_hand_ui_values):
+            current_pos_to_record[dof_name] = float(right_hand_ui_values[i]) # Ensure it's a float
+        else:
+            # Fallback
+            current_pos_to_record[dof_name] = float(config.DEFAULT_HAND_ANGLE)
+            print(f"Warning: Missing UI value for right hand DOF {dof_name}, using default.")
+
+    recorded_positions.append(current_pos_to_record.copy()) # Use .copy() to store a snapshot
+    return f"已记录位置 {len(recorded_positions)} (手部姿态来自UI滑块) 到当前活跃轨迹。"
 
 def save_trajectory(filename_str):
     global recorded_positions

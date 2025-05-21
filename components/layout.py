@@ -102,8 +102,8 @@ def create_layout():
                 dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, size="sm"), width="auto")
             ], className="mb-3 justify-content-start"),
             dbc.Row([
-                dbc.Col([html.H5("手臂关节 (rad):"), html.Pre(id="arm-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '150px', 'overflowY': 'auto'})], md=6, className="mb-3 mb-md-0"), # Reduced maxHeight
-                dbc.Col([html.H5("头部伺服 (raw):"), html.Pre(id="head-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '70px', 'overflowY': 'auto'})], md=6) # Reduced maxHeight
+                dbc.Col([html.H5("手臂关节 (rad):"), html.Pre(id="arm-states-display", className="p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '150px', 'overflowY': 'auto'})], md=6, className="mb-3 mb-md-0"), # Reduced maxHeight
+                dbc.Col([html.H5("头部伺服 (raw):"), html.Pre(id="head-states-display", className="p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '70px', 'overflowY': 'auto'})], md=6) # Reduced maxHeight
             ]),
             # NEW: Placeholder for Hand States (if they become available)
             # dbc.Row([
@@ -167,20 +167,20 @@ def create_layout():
         # Main content area with three columns
         dbc.Row([
             dbc.Col([ # Column 1: Arms
-                dbc.Card(left_arm_card_content, className="mb-4 shadow-sm"),
-                dbc.Card(right_arm_card_content, className="mb-4 shadow-sm")
+                dbc.Card(left_arm_card_content, className="mb-4"),
+                dbc.Card(right_arm_card_content, className="mb-4")
             ], md=6, lg=3), # Adjusted column widths
             dbc.Col([ # Column 2: Head and Hands
-                dbc.Card(head_servo_card_content, className="mb-4 shadow-sm"),
-                dbc.Card(left_hand_card_content, className="mb-4 shadow-sm"), # ADDED LEFT HAND
-                dbc.Card(right_hand_card_content, className="mb-4 shadow-sm") # ADDED RIGHT HAND
+                dbc.Card(head_servo_card_content, className="mb-4"),
+                dbc.Card(left_hand_card_content, className="mb-4"), # ADDED LEFT HAND
+                dbc.Card(right_hand_card_content, className="mb-4") # ADDED RIGHT HAND
             ], md=6, lg=3), # Adjusted column widths
             dbc.Col([ # Column 3: States and Trajectory Management
-                dbc.Card(joint_states_card_content, className="mb-4 shadow-sm"),
-                dbc.Card(trajectory_management_card_content, className="mb-4 shadow-sm")
+                dbc.Card(joint_states_card_content, className="mb-4"),
+                dbc.Card(trajectory_management_card_content, className="mb-4")
             ], md=6, lg=3), # Adjusted column widths
              dbc.Col([ # Column 4: Trajectory Playback
-                dbc.Card(trajectory_playback_card_content, className="mb-4 shadow-sm")
+                dbc.Card(trajectory_playback_card_content, className="mb-4")
             ], md=6, lg=3)  # Adjusted column widths
         ]),
         

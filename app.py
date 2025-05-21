@@ -14,7 +14,7 @@ from .callbacks.ui_callbacks import register_callbacks
 from .ros_comms.handler import cleanup_ros_threads # Corrected import for cleanup
 
 # --- Dash App Initialization ---
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True, update_title=None)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], suppress_callback_exceptions=True, update_title=None)
 server = app.server # For Gunicorn/Waitress deployment
 
 # Set the layout

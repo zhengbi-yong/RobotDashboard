@@ -102,8 +102,22 @@ def create_layout():
                 dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, size="sm"), width="auto")
             ], className="mb-3 justify-content-start"),
             dbc.Row([
-                dbc.Col([html.H5("手臂关节 (rad):"), html.Pre(id="arm-states-display", className="p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '150px', 'overflowY': 'auto'})], md=6, className="mb-3 mb-md-0"), # Reduced maxHeight
-                dbc.Col([html.H5("头部伺服 (raw):"), html.Pre(id="head-states-display", className="p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '70px', 'overflowY': 'auto'})], md=6) # Reduced maxHeight
+                dbc.Col([
+                    html.H5("手臂关节 (rad):"),
+                    dbc.Alert(
+                        html.Pre(id="arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '118px', 'overflowY': 'auto', 'margin': '0'}), # Adjusted maxHeight, added margin:0
+                        color="secondary",
+                        className="mb-0" # Using pre-wrap should handle spacing, mb-0 for alert itself
+                    )
+                ], md=6, className="mb-3 mb-md-0"),
+                dbc.Col([
+                    html.H5("头部伺服 (raw):"),
+                    dbc.Alert(
+                        html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '38px', 'overflowY': 'auto', 'margin': '0'}), # Adjusted maxHeight, added margin:0
+                        color="secondary",
+                        className="mb-0"
+                    )
+                ], md=6)
             ]),
             # NEW: Placeholder for Hand States (if they become available)
             # dbc.Row([
@@ -123,13 +137,13 @@ def create_layout():
             ], className="mb-3"),
             dbc.Form([
                 dbc.Row([
-                    dbc.Col(dcc.Input(id="trajectory-filename-input", type="text", placeholder="输入轨迹名称...", className="form-control"), width=12, sm=6, md=4, className="mb-2"),
-                    dbc.Col(dbc.Button("保存活跃轨迹", id="save-trajectory-button", color="primary", className="w-100"), width=12, sm=6, md=4, className="mb-2 d-grid")
+                    dbc.Col(dcc.Input(id="trajectory-filename-input", type="text", placeholder="输入轨迹名称...", className="form-control"), width=12, sm=12, md=4, className="mb-2"),
+                    dbc.Col(dbc.Button("保存活跃轨迹", id="save-trajectory-button", color="primary", className="w-100"), width=12, sm=12, md=4, className="mb-2 d-grid")
                 ], className="mb-2 align-items-center"),
                 dbc.Row([
-                    dbc.Col(dcc.Dropdown(id="trajectory-select-dropdown", placeholder="选择已保存轨迹...", style={"width": "100%"}), width=12, sm=6, md=4, className="mb-2"),
-                    dbc.Col(dbc.Button("刷新列表", id="refresh-trajectory-list-button", color="secondary", outline=True, className="w-100"), width=12, sm=3, md=2, className="mb-2 d-grid"),
-                    dbc.Col(dbc.Button("加载选中轨迹", id="load-selected-trajectory-button", color="info", className="w-100"), width=12, sm=3, md=2, className="mb-2 d-grid")
+                    dbc.Col(dcc.Dropdown(id="trajectory-select-dropdown", placeholder="选择已保存轨迹...", style={"width": "100%"}), width=12, sm=12, md=4, className="mb-2"),
+                    dbc.Col(dbc.Button("刷新列表", id="refresh-trajectory-list-button", color="secondary", outline=True, className="w-100"), width=12, sm=12, md=2, className="mb-2 d-grid"),
+                    dbc.Col(dbc.Button("加载选中轨迹", id="load-selected-trajectory-button", color="info", className="w-100"), width=12, sm=12, md=2, className="mb-2 d-grid")
                 ], className="mb-3 align-items-center")
             ]),
             html.H5("活跃轨迹中的点 (Active Trajectory Points)", className="mt-3"),
@@ -169,19 +183,19 @@ def create_layout():
             dbc.Col([ # Column 1: Arms
                 dbc.Card(left_arm_card_content, className="mb-4"),
                 dbc.Card(right_arm_card_content, className="mb-4")
-            ], md=6, lg=3), # Adjusted column widths
+            ], sm=12, md=6, lg=3), # Adjusted column widths
             dbc.Col([ # Column 2: Head and Hands
                 dbc.Card(head_servo_card_content, className="mb-4"),
                 dbc.Card(left_hand_card_content, className="mb-4"), # ADDED LEFT HAND
                 dbc.Card(right_hand_card_content, className="mb-4") # ADDED RIGHT HAND
-            ], md=6, lg=3), # Adjusted column widths
+            ], sm=12, md=6, lg=3), # Adjusted column widths
             dbc.Col([ # Column 3: States and Trajectory Management
                 dbc.Card(joint_states_card_content, className="mb-4"),
                 dbc.Card(trajectory_management_card_content, className="mb-4")
-            ], md=6, lg=3), # Adjusted column widths
+            ], sm=12, md=6, lg=3), # Adjusted column widths
              dbc.Col([ # Column 4: Trajectory Playback
                 dbc.Card(trajectory_playback_card_content, className="mb-4")
-            ], md=6, lg=3)  # Adjusted column widths
+            ], sm=12, md=6, lg=3)  # Adjusted column widths
         ]),
         
         html.Footer(

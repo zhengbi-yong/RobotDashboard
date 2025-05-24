@@ -28,22 +28,26 @@ HEAD_SERVO_RANGES = {
     'head_pan_servo': {'id': 2, 'min': 0, 'max': 1000, 'neutral': 500}
 }
 
-# --- HAND --- NEW SECTION
+# --- HAND ---
 LEFT_HAND_CMD_TOPIC = '/l_arm/rm_driver/Hand_SetAngle'
 RIGHT_HAND_CMD_TOPIC = '/r_arm/rm_driver/Hand_SetAngle'
 HAND_MSG_TYPE = 'dual_arm_msgs/Hand_Angle' # Assumed based on your info
 
 # For UI and internal state tracking (6 DoFs per hand)
-# These are placeholder names, adjust if you have specific finger/joint names
 LEFT_HAND_DOF_NAMES = [f'l_hand_dof{i+1}' for i in range(6)]
 RIGHT_HAND_DOF_NAMES = [f'r_hand_dof{i+1}' for i in range(6)]
 
-# IMPORTANT: Define realistic min, max, and default for your hand DoFs
-MIN_HAND_ANGLE = 0      # Placeholder
-MAX_HAND_ANGLE = 1000   # Placeholder (int16 can go higher, but practically?)
-DEFAULT_HAND_ANGLE = 1000 # Placeholder
-HAND_ANGLE_STEP = 10    # Placeholder
-HAND_MARKS_STEP = 200   # Placeholder for slider marks
+MIN_HAND_ANGLE = 0
+MAX_HAND_ANGLE = 1000
+DEFAULT_HAND_ANGLE = 1000
+HAND_ANGLE_STEP = 10
+HAND_MARKS_STEP = 200
+
+# --- NAVIGATION --- NEW SECTION
+NAV_CMD_TOPIC = '/navigation_marker'
+NAV_MSG_TYPE = 'std_msgs/String'
+PREDEFINED_NAV_POINTS = ['charging', 'path01', 'door'] + [f'seat{i:02d}' for i in range(1, 17)]
+
 
 # Trajectory Directory
 TRAJECTORY_DIR = os.path.join(_THIS_DIR, "trajectories")

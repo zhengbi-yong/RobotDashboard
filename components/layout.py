@@ -45,12 +45,12 @@ def create_layout():
         ])
     ]
 
-    # --- Left Hand Control Card --- NEW
+    # --- Left Hand Control Card ---
     left_hand_card_content = [
         dbc.CardHeader("左手控制 (Left Hand Control)"),
         dbc.CardBody([
             *[html.Div([
-                html.Label(f"{config.LEFT_HAND_DOF_NAMES[i]}"), # Using DOF names from config
+                html.Label(f"{config.LEFT_HAND_DOF_NAMES[i]}"),
                 dcc.Slider(
                     id=f"l_hand_slider_{i}",
                     min=config.MIN_HAND_ANGLE, max=config.MAX_HAND_ANGLE, value=config.DEFAULT_HAND_ANGLE,
@@ -63,12 +63,12 @@ def create_layout():
         ])
     ]
 
-    # --- Right Hand Control Card --- NEW
+    # --- Right Hand Control Card ---
     right_hand_card_content = [
         dbc.CardHeader("右手控制 (Right Hand Control)"),
         dbc.CardBody([
             *[html.Div([
-                html.Label(f"{config.RIGHT_HAND_DOF_NAMES[i]}"), # Using DOF names from config
+                html.Label(f"{config.RIGHT_HAND_DOF_NAMES[i]}"),
                 dcc.Slider(
                     id=f"r_hand_slider_{i}",
                     min=config.MIN_HAND_ANGLE, max=config.MAX_HAND_ANGLE, value=config.DEFAULT_HAND_ANGLE,
@@ -81,7 +81,6 @@ def create_layout():
         ])
     ]
 
-
     # --- ROS Connection and Status ---
     ros_connection_section = dbc.Card([
         dbc.CardHeader("ROS 连接状态 (ROS Connection)"),
@@ -92,6 +91,24 @@ def create_layout():
             ], align="center")
         ])
     ], className="mb-4")
+
+    # --- Navigation Control Card --- NEW
+    nav_control_card_content = [
+        dbc.CardHeader("导航控制 (Navigation Control)"),
+        dbc.CardBody([
+            html.Div([
+                html.Label("选择导航目标点:", className="form-label"),
+                dcc.Dropdown(
+                    id="nav-point-dropdown",
+                    options=[{'label': point, 'value': point} for point in config.PREDEFINED_NAV_POINTS],
+                    placeholder="选择一个目标点...",
+                    className="mb-3"
+                )
+            ]),
+            html.Div(dbc.Button("发送导航指令", id="send-nav-command-button", color="primary", className="mt-2 w-100"), className="d-grid")
+        ])
+    ]
+
 
     # --- Current Joint States Card ---
     joint_states_card_content = [
@@ -105,25 +122,20 @@ def create_layout():
                 dbc.Col([
                     html.H5("手臂关节 (rad):"),
                     dbc.Alert(
-                        html.Pre(id="arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '118px', 'overflowY': 'auto', 'margin': '0'}), # Adjusted maxHeight, added margin:0
+                        html.Pre(id="arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '118px', 'overflowY': 'auto', 'margin': '0'}),
                         color="secondary",
-                        className="mb-0" # Using pre-wrap should handle spacing, mb-0 for alert itself
+                        className="mb-0"
                     )
                 ], md=6, className="mb-3 mb-md-0"),
                 dbc.Col([
                     html.H5("头部伺服 (raw):"),
                     dbc.Alert(
-                        html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '38px', 'overflowY': 'auto', 'margin': '0'}), # Adjusted maxHeight, added margin:0
+                        html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '38px', 'overflowY': 'auto', 'margin': '0'}),
                         color="secondary",
                         className="mb-0"
                     )
                 ], md=6)
-            ]),
-            # NEW: Placeholder for Hand States (if they become available)
-            # dbc.Row([
-            #     dbc.Col([html.H5("左手状态:"), html.Pre(id="left-hand-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '100px', 'overflowY': 'auto'})], md=6, className="mt-3"),
-            #     dbc.Col([html.H5("右手状态:"), html.Pre(id="right-hand-states-display", className="bg-light p-2 border rounded", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '100px', 'overflowY': 'auto'})], md=6, className="mt-3")
-            # ], className="mt-3")
+            ])
         ])
     ]
 
@@ -148,7 +160,7 @@ def create_layout():
             ]),
             html.H5("活跃轨迹中的点 (Active Trajectory Points)", className="mt-3"),
             html.Div(id="recorded-positions-count-display", children="尚未记录或加载任何位置。", className="mb-2 text-muted"),
-            html.Div(id="recorded-positions-list-display", style={'maxHeight': '250px', 'overflowY': 'auto', 'border': '1px solid #eee', 'padding': '10px', 'backgroundColor': '#f9f9f9', 'borderRadius': '5px'}) # Reduced maxHeight
+            html.Div(id="recorded-positions-list-display", style={'maxHeight': '250px', 'overflowY': 'auto', 'border': '1px solid #eee', 'padding': '10px', 'backgroundColor': '#f9f9f9', 'borderRadius': '5px'})
         ])
     ]
     
@@ -176,26 +188,32 @@ def create_layout():
 
         dbc.Row(dbc.Col(html.H1("机器人控制与监控面板", className="text-center my-4"))),
         ros_connection_section,
+        
+        # NEW NAVIGATION SECTION
+        dbc.Row([
+            dbc.Col(dbc.Card(nav_control_card_content, className="mb-4"), sm=12, md=6, lg=4)
+        ], justify="center"),
+
         html.Hr(className="my-4"),
 
-        # Main content area with three columns
+        # Main content area with four columns
         dbc.Row([
             dbc.Col([ # Column 1: Arms
                 dbc.Card(left_arm_card_content, className="mb-4"),
                 dbc.Card(right_arm_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3), # Adjusted column widths
+            ], sm=12, md=6, lg=3),
             dbc.Col([ # Column 2: Head and Hands
                 dbc.Card(head_servo_card_content, className="mb-4"),
-                dbc.Card(left_hand_card_content, className="mb-4"), # ADDED LEFT HAND
-                dbc.Card(right_hand_card_content, className="mb-4") # ADDED RIGHT HAND
-            ], sm=12, md=6, lg=3), # Adjusted column widths
+                dbc.Card(left_hand_card_content, className="mb-4"),
+                dbc.Card(right_hand_card_content, className="mb-4")
+            ], sm=12, md=6, lg=3),
             dbc.Col([ # Column 3: States and Trajectory Management
                 dbc.Card(joint_states_card_content, className="mb-4"),
                 dbc.Card(trajectory_management_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3), # Adjusted column widths
+            ], sm=12, md=6, lg=3),
              dbc.Col([ # Column 4: Trajectory Playback
                 dbc.Card(trajectory_playback_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3)  # Adjusted column widths
+            ], sm=12, md=6, lg=3)
         ]),
         
         html.Footer(

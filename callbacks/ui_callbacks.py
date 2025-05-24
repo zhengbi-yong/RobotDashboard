@@ -13,7 +13,6 @@ from ..ros_comms import handler as ros_handler
 from ..utils import trajectory_manager as traj_manager
 
 def register_callbacks(app):
-    # ... (handle_ros_connection callback remains the same) ...
     @app.callback(
         Output("ros-connection-status-display", "children"),
         Output("connect-ros-button", "disabled"),
@@ -36,7 +35,7 @@ def register_callbacks(app):
                 current_status_display = f"状态: 已连接到 {config.ROS_BRIDGE_HOST}:{config.ROS_BRIDGE_PORT} (订阅器设置中...)"
             button_disabled_flag = True
         
-        if triggered_id == "connect-ros-button" and n_clicks_connect is not None: # Check n_clicks
+        if triggered_id == "connect-ros-button" and n_clicks_connect is not None:
             if ros_handler.ros_connection_thread and ros_handler.ros_connection_thread.is_alive():
                 print("连接尝试已在进行中。")
                 return current_status_display, True
@@ -46,12 +45,12 @@ def register_callbacks(app):
                 ros_handler.safe_terminate_ros_client()
                 if ros_handler.subscriber_thread and ros_handler.subscriber_thread.is_alive():
                     ros_handler.subscriber_thread.join(timeout=0.5)
-                if ros_handler.ros_connection_thread and ros_handler.ros_connection_thread.is_alive(): # Should be false now
+                if ros_handler.ros_connection_thread and ros_handler.ros_connection_thread.is_alive():
                     ros_handler.ros_connection_thread.join(timeout=0.5)
                 time.sleep(1.0)
 
             ros_handler.try_connect_ros()
-            current_status_display = f"状态: {ros_handler.ros_connection_status}" # Will show "Connecting..."
+            current_status_display = f"状态: {ros_handler.ros_connection_status}"
             button_disabled_flag = True
             
         return current_status_display, button_disabled_flag
@@ -62,36 +61,37 @@ def register_callbacks(app):
         [Input("send-left-arm-button", "n_clicks"),
          Input("send-right-arm-button", "n_clicks"),
          Input("send-head-servo-button", "n_clicks"),
-         Input("send-left-hand-button", "n_clicks"),   # NEW
-         Input("send-right-hand-button", "n_clicks")], # NEW
+         Input("send-left-hand-button", "n_clicks"),
+         Input("send-right-hand-button", "n_clicks"),
+         Input("send-nav-command-button", "n_clicks")], # MODIFIED: Added nav button input
         # Arm states (7 each)
         [State(f"l_arm_slider_{i}", "value") for i in range(7)] +
         [State(f"r_arm_slider_{i}", "value") for i in range(7)] +
         # Head states (2)
         [State("head-tilt-slider", "value"), State("head-pan-slider", "value")] +
-        # Hand states (6 each) - NEW
+        # Hand states (6 each)
         [State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
-        [State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))],
+        [State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
+        [State("nav-point-dropdown", "value")], # MODIFIED: Added nav point state
         prevent_initial_call=True
     )
-    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, *slider_values): # Added n_l_hand, n_r_hand
+    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav, *slider_values): # MODIFIED: Added n_nav
         ctx = callback_context
-        button_id = ctx.triggered_id # Simpler way to get button id
+        button_id = ctx.triggered_id
 
-        if not button_id: # If not triggered by a button click (e.g. initial load with prevent_initial_call)
+        if not button_id:
             return no_update
 
-        if not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done):
-            return html.Div("ROS 未连接或设置未完成。无法发送指令。", className="alert alert-danger")
-
+        # Unpack slider_values and nav_point. Be careful with index if adding/removing states.
+        # The last value in slider_values tuple will be the selected_nav_point
         # Unpack slider_values based on their order in State
         left_arm_angles_deg = slider_values[0:7]
         right_arm_angles_deg = slider_values[7:14]
         head_tilt_val = slider_values[14]
         head_pan_val = slider_values[15]
-        # NEW: Unpack hand slider values
         left_hand_angles_raw = slider_values[16 : 16 + len(config.LEFT_HAND_DOF_NAMES)]
         right_hand_angles_raw = slider_values[16 + len(config.LEFT_HAND_DOF_NAMES) : 16 + len(config.LEFT_HAND_DOF_NAMES) + len(config.RIGHT_HAND_DOF_NAMES)]
+        selected_nav_point = slider_values[-1] # MODIFIED: Get the last state for navigation
 
         # Convert hand angles to int as per message spec
         left_hand_angles_int = [int(a) for a in left_hand_angles_raw]
@@ -99,13 +99,15 @@ def register_callbacks(app):
 
         feedback_msg = "未知错误"
         try:
+            if not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done) and button_id != "connect-ros-button":
+                return html.Div("ROS 未连接或设置未完成。无法发送指令。", className="alert alert-danger")
+
             if button_id == "send-left-arm-button":
                 if ros_handler.left_arm_pub:
                     msg_data = {'joint': [a * (math.pi / 180.0) for a in left_arm_angles_deg], 'speed': 0.3, 'trajectory_connect': 0}
                     ros_handler.left_arm_pub.publish(roslibpy.Message(msg_data))
                     feedback_msg = "左臂指令已发送!"
                 else: return html.Div("左臂 Publisher 不可用。", className="alert alert-warning")
-            # ... (right arm and head logic remains similar) ...
             elif button_id == "send-right-arm-button":
                 if ros_handler.right_arm_pub:
                     msg_data = {'joint': [a * (math.pi / 180.0) for a in right_arm_angles_deg], 'speed': 0.3, 'trajectory_connect': 0}
@@ -124,7 +126,6 @@ def register_callbacks(app):
                     feedback_msg = "头部伺服指令已发送!"
                 else: return html.Div("头部伺服 Publisher 不可用。", className="alert alert-warning")
 
-            # NEW: Handle hand commands
             elif button_id == "send-left-hand-button":
                 if ros_handler.left_hand_pub:
                     msg_data = {'hand_angle': left_hand_angles_int}
@@ -145,6 +146,15 @@ def register_callbacks(app):
                     feedback_msg = "右手指令已发送!"
                 else: return html.Div("右手 Publisher 不可用。", className="alert alert-warning")
             
+            elif button_id == "send-nav-command-button": # NEW: Navigation command logic
+                if not selected_nav_point:
+                    return html.Div("请选择一个导航目标点。", className="alert alert-warning")
+                if ros_handler.nav_pub:
+                    msg_data = {'data': selected_nav_point}
+                    ros_handler.nav_pub.publish(roslibpy.Message(msg_data))
+                    feedback_msg = f"导航指令 '{selected_nav_point}' 已发送!"
+                else: return html.Div("导航 Publisher 不可用。", className="alert alert-warning")
+            
             return html.Div(feedback_msg, className="alert alert-success")
 
         except Exception as e:
@@ -152,7 +162,6 @@ def register_callbacks(app):
             return html.Div(f"发送指令错误: {e}", className="alert alert-danger")
 
     # --- update_joint_state_display callback ---
-    # This callback might need to be expanded if you add hand state topics and displays
     @app.callback(
         [Output("arm-states-display", "children"), Output("head-states-display", "children")],
         [Input("interval-joint-state-update", "n_intervals"), Input("refresh-states-button", "n_clicks")]
@@ -160,14 +169,10 @@ def register_callbacks(app):
     def update_joint_state_display(n_intervals, n_refresh):
         arm_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.LEFT_ARM_JOINT_NAMES_INTERNAL + config.RIGHT_ARM_JOINT_NAMES_INTERNAL}
         head_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.HEAD_SERVO_RANGES.keys()}
-        # If you add hand state display elements, populate their data here
-        # hand_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.LEFT_HAND_DOF_NAMES + config.RIGHT_HAND_DOF_NAMES}
         return json.dumps(arm_states_to_display, indent=2), json.dumps(head_states_to_display, indent=2)
 
 
     # --- sync_sliders_to_robot_state callback ---
-    # This needs to be updated to include hand sliders if hand state feedback becomes available
-    # For now, it only syncs arms and head based on actual feedback.
     @app.callback(
         # Arm slider outputs (7 each)
         [Output(f"l_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)] +
@@ -175,7 +180,7 @@ def register_callbacks(app):
         # Head slider outputs (2)
         [Output("head-tilt-slider", "value", allow_duplicate=True),
          Output("head-pan-slider", "value", allow_duplicate=True)] +
-        # Hand slider outputs (6 each) - NEW (will use default if no feedback)
+        # Hand slider outputs (6 each)
         [Output(f"l_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
         [Output(f"r_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
         [Output("action-feedback-display", "children", allow_duplicate=True)],
@@ -192,8 +197,6 @@ def register_callbacks(app):
         head_tilt_val = ros_handler.latest_joint_states.get('head_tilt_servo', config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'])
         head_pan_val = ros_handler.latest_joint_states.get('head_pan_servo', config.HEAD_SERVO_RANGES['head_pan_servo']['neutral'])
         
-        # For hands, use the values from latest_joint_states which are updated on command
-        # or default if never commanded / no feedback mechanism implemented yet
         l_hand_vals = [ros_handler.latest_joint_states.get(name, config.DEFAULT_HAND_ANGLE) for name in config.LEFT_HAND_DOF_NAMES]
         r_hand_vals = [ros_handler.latest_joint_states.get(name, config.DEFAULT_HAND_ANGLE) for name in config.RIGHT_HAND_DOF_NAMES]
 
@@ -201,16 +204,7 @@ def register_callbacks(app):
         feedback = html.Div("滑块已同步至当前机器人状态/指令值。", className="alert alert-info")
         return *all_slider_updates, feedback
 
-    # --- Trajectory related callbacks need to be updated for hands ---
-    # handle_record_save_load_trajectory:
-    #   - The record_current_position in trajectory_manager will now pick up hand values from latest_joint_states
-    #     (because send_control_commands updates them there).
-    #   - The display function get_display_for_recorded_positions_list will need to show hand values.
-
-    # handle_replay_once & execute_continuous_playback_step:
-    #   - Need to extract hand values from pos_data and publish hand commands.
-
-    # --- update_trajectory_dropdown --- (no change needed for this one)
+    # --- update_trajectory_dropdown ---
     @app.callback(
         Output("trajectory-select-dropdown", "options"),
         [Input("refresh-trajectory-list-button", "n_clicks"),
@@ -219,7 +213,7 @@ def register_callbacks(app):
     def update_trajectory_dropdown(n_refresh, n_save):
         return traj_manager.get_trajectory_files_options()
 
-    # --- handle_delete_trajectory_point --- (no direct change for hands, but display will reflect it)
+    # --- handle_delete_trajectory_point ---
     @app.callback(
         [Output("action-feedback-display", "children", allow_duplicate=True),
          Output("recorded-positions-count-display", "children", allow_duplicate=True),
@@ -247,7 +241,7 @@ def register_callbacks(app):
         new_playback_store_data['current_index'] = 0
 
         count_display_text = f"活跃轨迹中包含 {len(active_trajectory)} 个位置点。" if active_trajectory else "活跃轨迹为空。"
-        list_display_children = traj_manager.get_display_for_recorded_positions_list(active_trajectory) # This will now show hands too
+        list_display_children = traj_manager.get_display_for_recorded_positions_list(active_trajectory)
         
         return html.Div(feedback_msg, className=f"alert alert-{feedback_type} mt-2"), count_display_text, list_display_children, new_playback_store_data
 
@@ -263,7 +257,6 @@ def register_callbacks(app):
         [State("trajectory-filename-input", "value"),
          State("trajectory-select-dropdown", "value"),
          State("playback-state-store", "data"),
-         # ADD STATES FOR HAND SLIDERS
          *[State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))],
          *[State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))]
         ],
@@ -272,7 +265,7 @@ def register_callbacks(app):
     def handle_record_save_load_trajectory(n_record, n_save, n_load,
                                            trajectory_filename, selected_trajectory_path,
                                            current_playback_state,
-                                           *hand_slider_values # This will capture all hand slider states
+                                           *hand_slider_values
                                            ):
         ctx = callback_context
         button_id = ctx.triggered_id
@@ -282,11 +275,9 @@ def register_callbacks(app):
         feedback_msg = ""
         feedback_type = "info"
         new_playback_store_data = current_playback_state.copy()
-        # Initialize active_trajectory_after_action. It will be updated based on the action.
         active_trajectory_after_action = traj_manager.get_current_trajectory()
 
 
-        # Unpack hand slider values
         num_left_hand_dofs = len(config.LEFT_HAND_DOF_NAMES)
         left_hand_ui_values = list(hand_slider_values[:num_left_hand_dofs])
         right_hand_ui_values = list(hand_slider_values[num_left_hand_dofs:])
@@ -304,10 +295,7 @@ def register_callbacks(app):
             feedback_type = "success"
         elif button_id == "save-trajectory-button":
             if not n_save: return no_update, no_update, no_update, no_update
-            # Call save_trajectory with only the filename
-            # It will use the globally managed 'recorded_positions' within trajectory_manager
             feedback_msg, feedback_type = traj_manager.save_trajectory(trajectory_filename)
-            # The active trajectory in the manager is what was saved.
             active_trajectory_after_action = traj_manager.get_current_trajectory()
         elif button_id == "load-selected-trajectory-button":
             if not n_load: return no_update, no_update, no_update, no_update
@@ -342,7 +330,6 @@ def register_callbacks(app):
         print(f"开始单次回放 {len(current_trajectory)} 个位置点...")
         try:
             for i, pos_data in enumerate(current_trajectory):
-                # print(f"  回放点 {i+1}/{len(current_trajectory)}")
                 # Arm commands
                 if ros_handler.left_arm_pub:
                     left_targets = [pos_data.get(j, ros_handler.latest_joint_states.get(j, 0.0)) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
@@ -353,15 +340,14 @@ def register_callbacks(app):
                 time.sleep(0.05)
                 # Head commands
                 if ros_handler.head_servo_pub:
-                    # ... (head command logic) ...
                     head_tilt_target = pos_data.get('head_tilt_servo', config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'])
                     ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(head_tilt_target)}))
                     time.sleep(0.02)
                     head_pan_target = pos_data.get('head_pan_servo', config.HEAD_SERVO_RANGES['head_pan_servo']['neutral'])
                     ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(head_pan_target)}))
                 
-                # NEW: Hand commands
-                time.sleep(0.05) # Small delay before hand commands
+                # Hand commands
+                time.sleep(0.05)
                 if ros_handler.left_hand_pub:
                     left_hand_targets_int = [int(pos_data.get(dof, config.DEFAULT_HAND_ANGLE)) for dof in config.LEFT_HAND_DOF_NAMES]
                     ros_handler.left_hand_pub.publish(roslibpy.Message({'hand_angle': left_hand_targets_int}))
@@ -376,7 +362,7 @@ def register_callbacks(app):
             print(f"回放过程中发生错误: {e}")
             return html.Div(f"回放错误: {e}", className="alert alert-danger")
 
-    # manage_continuous_replay_controls (no direct changes for hands, but uses trajectory from store)
+    # manage_continuous_replay_controls
     @app.callback(
         [Output("continuous-playback-interval", "disabled"),
          Output("continuous-playback-interval", "interval"),
@@ -411,7 +397,7 @@ def register_callbacks(app):
             new_p_state_manage['is_repeating'] = False
             feedback_text, feedback_type = "连续回放已停止。", "info"
         
-        interval_ms = max(100, int(delay_sec_state * 1000)) # ensure interval is updated
+        interval_ms = max(100, int(delay_sec_state * 1000))
         return interval_disabled, interval_ms, start_button_disabled, stop_button_disabled, new_p_state_manage, html.Div(feedback_text,className=f"alert alert-{feedback_type}")
 
 
@@ -425,7 +411,7 @@ def register_callbacks(app):
          # Head slider outputs
          Output("head-tilt-slider", "value", allow_duplicate=True),
          Output("head-pan-slider", "value", allow_duplicate=True),
-         # Hand slider outputs - NEW
+         # Hand slider outputs
          *[Output(f"l_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.LEFT_HAND_DOF_NAMES))],
          *[Output(f"r_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.RIGHT_HAND_DOF_NAMES))]
         ],
@@ -473,12 +459,11 @@ def register_callbacks(app):
             time.sleep(0.05)
             # Head commands
             if ros_handler.head_servo_pub:
-                # ... (head command logic as in replay_once) ...
                 ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(tilt_s_val)}))
                 time.sleep(0.02)
                 ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(pan_s_val)}))
 
-            # NEW: Hand commands for continuous playback
+            # Hand commands for continuous playback
             time.sleep(0.05)
             if ros_handler.left_hand_pub:
                 left_hand_targets_int_exec = [int(pos_data_exec.get(dof, config.DEFAULT_HAND_ANGLE)) for dof in config.LEFT_HAND_DOF_NAMES]

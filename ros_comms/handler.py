@@ -18,9 +18,11 @@ left_arm_pub = None
 right_arm_pub = None
 # Head publisher
 head_servo_pub = None
-# Hand publishers - NEW
+# Hand publishers
 left_hand_pub = None
 right_hand_pub = None
+# Navigation publisher - NEW
+nav_pub = None
 
 # Subscribers
 left_arm_sub = None
@@ -37,14 +39,12 @@ latest_joint_states = {
     **{name: 0.0 for name in config.RIGHT_ARM_JOINT_NAMES_INTERNAL},
     'head_tilt_servo': float(config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral']),
     'head_pan_servo': float(config.HEAD_SERVO_RANGES['head_pan_servo']['neutral']),
-    # NEW: Add hand DoFs with default values
+    # Add hand DoFs with default values
     **{name: float(config.DEFAULT_HAND_ANGLE) for name in config.LEFT_HAND_DOF_NAMES},
     **{name: float(config.DEFAULT_HAND_ANGLE) for name in config.RIGHT_HAND_DOF_NAMES},
 }
 
 def start_ros_subscriber_thread_internal():
-    # ... (existing subscriber setup code remains the same) ...
-    # If hand state topics become available later, add subscribers here.
     global ros_client, left_arm_sub, right_arm_sub, head_servo_sub, ros_setup_done
 
     current_thread_subscriptions_ok = False
@@ -57,10 +57,11 @@ def start_ros_subscriber_thread_internal():
         if time.time() - start_wait > wait_timeout:
             print("[Subscriber Thread] Timed out waiting for a connected ros_client. Exiting.")
             return
-        time.sleep(0.2)
-        if not ros_client:
+        if not ros_client: # Check if client becomes None during wait
             print("[Subscriber Thread] ros_client became None while waiting. Exiting.")
             return
+        time.sleep(0.2)
+        
 
     print("[Subscriber Thread] Client connected. Setting up ROS subscriptions.")
     try:
@@ -101,7 +102,7 @@ def start_ros_subscriber_thread_internal():
 def _ros_connect_thread_target():
     global ros_client, ros_connection_status, ros_setup_done, subscriber_thread
     global left_arm_pub, right_arm_pub, head_servo_pub
-    global left_hand_pub, right_hand_pub # NEW
+    global left_hand_pub, right_hand_pub, nav_pub # MODIFIED: Added nav_pub
 
     local_ros_client = None
     try:
@@ -120,9 +121,9 @@ def _ros_connect_thread_target():
         left_arm_pub = roslibpy.Topic(ros_client, config.LEFT_ARM_CMD_TOPIC, config.ARM_MSG_TYPE)
         right_arm_pub = roslibpy.Topic(ros_client, config.RIGHT_ARM_CMD_TOPIC, config.ARM_MSG_TYPE)
         head_servo_pub = roslibpy.Topic(ros_client, config.HEAD_SERVO_CMD_TOPIC, config.HEAD_SERVO_MSG_TYPE)
-        # NEW: Initialize hand publishers
         left_hand_pub = roslibpy.Topic(ros_client, config.LEFT_HAND_CMD_TOPIC, config.HAND_MSG_TYPE)
         right_hand_pub = roslibpy.Topic(ros_client, config.RIGHT_HAND_CMD_TOPIC, config.HAND_MSG_TYPE)
+        nav_pub = roslibpy.Topic(ros_client, config.NAV_CMD_TOPIC, config.NAV_MSG_TYPE) # NEW: Navigation Publisher
         print("[Connect Thread] All Publishers initialized.")
 
         ros_setup_done = False
@@ -133,7 +134,6 @@ def _ros_connect_thread_target():
         subscriber_thread.start()
         print("[Connect Thread] Subscriber thread initiated.")
 
-    # ... (rest of _ros_connect_thread_target: error handling and finally block) ...
     except roslibpy.core.RosTimeoutError as e:
         error_msg = f"Error: Connection Timed Out - {str(e)}"
         print(f"[Connect Thread] {error_msg}")
@@ -156,12 +156,11 @@ def _ros_connect_thread_target():
             ros_setup_done = False
             # Nullify publishers if connection failed before they were used or if client is gone
             left_arm_pub = right_arm_pub = head_servo_pub = None
-            left_hand_pub = right_hand_pub = None # NEW
+            left_hand_pub = right_hand_pub = nav_pub = None # MODIFIED: Added nav_pub
         print("[Connect Thread] Connection attempt thread finished.")
 
 
 def try_connect_ros():
-    # ... (this function remains the same) ...
     global ros_connection_thread, ros_connection_status
     ros_connection_status = f"Connecting to {config.ROS_BRIDGE_HOST}:{config.ROS_BRIDGE_PORT}..."
     print(ros_connection_status)
@@ -174,15 +173,14 @@ def try_connect_ros():
 
 def safe_terminate_ros_client():
     global ros_client, ros_setup_done
-    global left_arm_pub, right_arm_pub, head_servo_pub, left_hand_pub, right_hand_pub # ADDED hand pubs
+    global left_arm_pub, right_arm_pub, head_servo_pub, left_hand_pub, right_hand_pub, nav_pub # MODIFIED: Added nav_pub
     global left_arm_sub, right_arm_sub, head_servo_sub, ros_connection_status
 
     ros_setup_done = False
     # Nullify publishers
     left_arm_pub = right_arm_pub = head_servo_pub = None
-    left_hand_pub = right_hand_pub = None # NEW
+    left_hand_pub = right_hand_pub = nav_pub = None # MODIFIED: Added nav_pub
 
-    # ... (rest of subscriber cleanup remains the same) ...
     try:
         if left_arm_sub and left_arm_sub.is_advertised: left_arm_sub.unadvertise()
     except Exception as e: print(f"Error unadvertising left_arm_sub: {e}")
@@ -195,7 +193,6 @@ def safe_terminate_ros_client():
     left_arm_sub = right_arm_sub = head_servo_sub = None
     
     if ros_client:
-        # ... (client termination logic remains the same) ...
         client_to_terminate = ros_client
         ros_client = None
         try:
@@ -216,7 +213,6 @@ def safe_terminate_ros_client():
 
 
 def cleanup_ros_threads():
-    # ... (this function remains the same) ...
     global ros_connection_thread, subscriber_thread
     print("Initiating ROS threads cleanup...")
     safe_terminate_ros_client()

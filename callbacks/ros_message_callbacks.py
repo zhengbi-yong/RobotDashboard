@@ -1,4 +1,4 @@
-# your_robot_dashboard/callbacks/ros_message_callbacks.py
+# RobotDashboard/callbacks/ros_message_callbacks.py
 
 import json
 from .. import config # Relative import

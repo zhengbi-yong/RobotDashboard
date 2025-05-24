@@ -1,4 +1,4 @@
-# your_robot_dashboard/app.py
+# RobotDashboard/app.py
 
 import dash
 import dash_bootstrap_components as dbc

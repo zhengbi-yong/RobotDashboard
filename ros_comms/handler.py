@@ -412,3 +412,74 @@ def reset_latest_moveit_result():
     global _last_moveit_error_code, _last_moveit_result_timestamp
     _last_moveit_error_code = None
     _last_moveit_result_timestamp = 0
+
+# --- 用下面这个最终修正版的函数完整替换掉旧的同名函数 ---
+def send_moveit_pose_goal(planning_group, pose_data, velocity_scaling_factor=0.5):
+    """
+    Sends a MoveIt! goal based on a target end-effector pose. (FINAL CORRECTED STRUCTURE)
+    """
+    global moveit_action_client
+    if not moveit_action_client:
+        print("MoveIt! action client is not initialized.")
+        return
+
+    # MoveGroup.action 的目标 (Goal) 包含 'request' 和 'planning_options' 两个顶级字段
+    goal_message = roslibpy.Message({
+        'request': {
+            'group_name': planning_group,
+            'num_planning_attempts': 5,
+            'allowed_planning_time': 5.0,
+            'max_velocity_scaling_factor': velocity_scaling_factor,
+            'planner_id': '',
+            # --- 核心修正开始 ---
+            'goal_constraints': [{
+                # Constraints 消息没有 pose_stamped 字段.
+                # 必须将位姿分解为位置和姿态两个独立的约束.
+                'name': 'pose_goal', # 约束的名字
+                'joint_constraints': [], # 保持为空
+                
+                # 1. 位置约束 (PositionConstraint)
+                'position_constraints': [{
+                    'header': {'frame_id': config.PLANNING_FRAME},
+                    'link_name': config.END_EFFECTOR_LINKS.get(planning_group, ""), # 需要末端连杆的名称!
+                    'constraint_region': {
+                        'primitive_poses': [{
+                            'position': pose_data['position'],
+                            'orientation': {'w': 1.0} # 方向不重要，因为下面是 Bounding Volume
+                        }],
+                        'primitives': [{
+                            'type': 1, # SPHERE
+                            'dimensions': [0.01] # 1cm 的容差球体
+                        }]
+                    },
+                    'weight': 1.0
+                }],
+
+                # 2. 姿态约束 (OrientationConstraint)
+                'orientation_constraints': [{
+                    'header': {'frame_id': config.PLANNING_FRAME},
+                    'link_name': config.END_EFFECTOR_LINKS.get(planning_group, ""), # 需要末端连杆的名称!
+                    'orientation': pose_data['orientation'],
+                    'absolute_x_axis_tolerance': 0.05, # 大约3度
+                    'absolute_y_axis_tolerance': 0.05,
+                    'absolute_z_axis_tolerance': 0.05,
+                    'weight': 1.0
+                }],
+
+                'visibility_constraints': [] # 保持为空
+            }]
+            # --- 核心修正结束 ---
+        },
+        'planning_options': {
+            'planning_scene_diff': {'is_diff': True, 'robot_state': {'is_diff': True}},
+            'plan_only': False,
+            'replan': True,
+            'replan_attempts': 5
+        }
+    })
+
+    # 构建 roslibpy.actionlib.Goal 对象
+    goal = roslibpy.actionlib.Goal(moveit_action_client, goal_message)
+    
+    print(f"Sending POSE goal to planning group '{planning_group}' with FINAL CORRECTED structure...")
+    goal.send()

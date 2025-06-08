@@ -172,6 +172,44 @@ def create_layout():
             ], className="justify-content-start")
         ])
     ]
+    # --- NEW: Pose Control Card ---
+    pose_control_card_content = [
+        dbc.CardHeader("末端位姿控制 (End-Effector Pose Control)"),
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col(html.Label("选择控制组:"), width=12),
+                dbc.Col(
+                    dbc.RadioItems(
+                        id="pose-control-arm-select",
+                        options=[
+                            {'label': '左臂', 'value': config.PLANNING_GROUP_LEFT_ARM},
+                            {'label': '右臂', 'value': config.PLANNING_GROUP_RIGHT_ARM},
+                        ],
+                        value=config.PLANNING_GROUP_LEFT_ARM, # 默认选中左臂
+                        inline=True,
+                        className="mb-3"
+                    ),
+                ),
+            ]),
+            html.Label("目标位置 (米):"),
+            dbc.Row([
+                dbc.Col(dbc.Input(id="pose-pos-x", placeholder="X", type="number"), className="mb-2"),
+                dbc.Col(dbc.Input(id="pose-pos-y", placeholder="Y", type="number"), className="mb-2"),
+                dbc.Col(dbc.Input(id="pose-pos-z", placeholder="Z", type="number"), className="mb-2"),
+            ]),
+            html.Label("目标姿态 (四元数):"),
+            dbc.Row([
+                dbc.Col(dbc.Input(id="pose-ori-w", placeholder="Qw", type="number", value=1.0)), # 默认值
+                dbc.Col(dbc.Input(id="pose-ori-x", placeholder="Qx", type="number", value=0.0)),
+                dbc.Col(dbc.Input(id="pose-ori-y", placeholder="Qy", type="number", value=0.0)),
+                dbc.Col(dbc.Input(id="pose-ori-z", placeholder="Qz", type="number", value=0.0)),
+            ], className="mb-3"),
+            html.Div(
+                dbc.Button("发送位姿目标", id="send-pose-goal-button", color="warning", className="w-100"),
+                className="d-grid"
+            )
+        ])
+    ]
 
     # --- Main Layout Definition ---
     layout = dbc.Container([
@@ -208,6 +246,7 @@ def create_layout():
             # -- Center Column: Trajectory and Global Actions --
             dbc.Col([
                 dbc.Card(global_actions_card_content, className="mb-4"),
+                dbc.Card(pose_control_card_content, className="mb-4"),
                 dbc.Card(trajectory_management_card_content, className="mb-4"),
                 dbc.Card(trajectory_playback_card_content, className="mb-4"),
             ], width=12, lg=6),

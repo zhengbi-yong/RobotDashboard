@@ -81,32 +81,46 @@ def register_callbacks(app):
         return no_update
 
 
+    # --- 用下面这个完整的代码块替换您现有的 send_control_commands 函数 ---
     @app.callback(
         Output("action-feedback-display", "children", allow_duplicate=True),
         [Input("send-left-arm-button", "n_clicks"),
-         Input("send-right-arm-button", "n_clicks"),
-         Input("send-head-servo-button", "n_clicks"),
-         Input("send-left-hand-button", "n_clicks"),
-         Input("send-right-hand-button", "n_clicks"),
-         Input("send-nav-command-button", "n_clicks")],
+        Input("send-right-arm-button", "n_clicks"),
+        Input("send-head-servo-button", "n_clicks"),
+        Input("send-left-hand-button", "n_clicks"),
+        Input("send-right-hand-button", "n_clicks"),
+        Input("send-nav-command-button", "n_clicks"),
+        Input("send-pose-goal-button", "n_clicks")],  # 7个Inputs
         [State(f"l_arm_slider_{i}", "value") for i in range(7)] +
         [State(f"r_arm_slider_{i}", "value") for i in range(7)] +
         [State("head-tilt-slider", "value"), State("head-pan-slider", "value")] +
         [State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
         [State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
         [State("nav-point-dropdown", "value")] +
-        [State("playback-speed-slider", "value")],
+        [State("playback-speed-slider", "value")] +
+        [State("pose-control-arm-select", "value"),
+        State("pose-pos-x", "value"), State("pose-pos-y", "value"), State("pose-pos-z", "value"),
+        State("pose-ori-w", "value"), State("pose-ori-x", "value"), State("pose-ori-y", "value"), State("pose-ori-z", "value")], # 38个States
         prevent_initial_call=True
     )
-    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav,
-                              l_arm_s0, l_arm_s1, l_arm_s2, l_arm_s3, l_arm_s4, l_arm_s5, l_arm_s6,
-                              r_arm_s0, r_arm_s1, r_arm_s2, r_arm_s3, r_arm_s4, r_arm_s5, r_arm_s6,
-                              head_tilt_val, head_pan_val,
-                              l_hand_s0, l_hand_s1, l_hand_s2, l_hand_s3, l_hand_s4, l_hand_s5,
-                              r_hand_s0, r_hand_s1, r_hand_s2, r_hand_s3, r_hand_s4, r_hand_s5,
-                              selected_nav_point,
-                              playback_speed_for_moveit
-                              ):
+    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav, n_pose, # 7个n_clicks参数
+                            # Arm Sliders (14)
+                            l_arm_s0, l_arm_s1, l_arm_s2, l_arm_s3, l_arm_s4, l_arm_s5, l_arm_s6,
+                            r_arm_s0, r_arm_s1, r_arm_s2, r_arm_s3, r_arm_s4, r_arm_s5, r_arm_s6,
+                            # Head Sliders (2)
+                            head_tilt_val, head_pan_val,
+                            # Hand Sliders (假设左右各6个, 共12个)
+                            l_hand_s0, l_hand_s1, l_hand_s2, l_hand_s3, l_hand_s4, l_hand_s5,
+                            r_hand_s0, r_hand_s1, r_hand_s2, r_hand_s3, r_hand_s4, r_hand_s5,
+                            # Other controls (2)
+                            selected_nav_point,
+                            playback_speed_for_moveit,
+                            # New Pose Controls (8)
+                            pose_arm_select,
+                            pos_x, pos_y, pos_z,
+                            ori_w, ori_x, ori_y, ori_z
+                            ):
+        # (函数体保持不变)
         ctx = callback_context
         button_id = ctx.triggered_id
 
@@ -128,44 +142,48 @@ def register_callbacks(app):
 
             if button_id == "send-left-arm-button":
                 if ros_handler.moveit_action_client:
-                    try:
-                        target_joint_angles_rad = [math.radians(deg) for deg in left_arm_angles_deg]
-                        ros_handler.send_moveit_joint_goal(
-                            config.PLANNING_GROUP_LEFT_ARM,
-                            config.LEFT_ARM_JOINT_NAMES_INTERNAL,
-                            target_joint_angles_rad,
-                            velocity_scaling_factor=playback_speed_for_moveit
-                        )
-                        feedback_msg = "左臂 MoveIt! 目标已发送！等待规划和执行结果..."
-                        ros_handler.reset_latest_moveit_result()
-                    except Exception as e:
-                        # --- vvv 2. 在这里添加这两行 vvv ---
-                        print("--- AN EXCEPTION OCCURRED ---")
-                        traceback.print_exc() 
-                        # --- ^^^ ---
-                        feedback_msg = f"发送左臂 MoveIt! 目标失败: {e}"
-                        return html.Div(feedback_msg, className="alert alert-danger")
+                    target_joint_angles_rad = [math.radians(deg) for deg in left_arm_angles_deg]
+                    ros_handler.send_moveit_joint_goal(
+                        config.PLANNING_GROUP_LEFT_ARM,
+                        config.LEFT_ARM_JOINT_NAMES_INTERNAL,
+                        target_joint_angles_rad,
+                        velocity_scaling_factor=playback_speed_for_moveit
+                    )
+                    feedback_msg = "左臂 MoveIt! 目标已发送！等待规划和执行结果..."
+                    ros_handler.reset_latest_moveit_result()
                 else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
             elif button_id == "send-right-arm-button":
                 if ros_handler.moveit_action_client:
-                    try:
-                        target_joint_angles_rad = [math.radians(deg) for deg in right_arm_angles_deg]
-                        ros_handler.send_moveit_joint_goal(
-                            config.PLANNING_GROUP_RIGHT_ARM,
-                            config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
-                            target_joint_angles_rad,
-                            velocity_scaling_factor=playback_speed_for_moveit
-                        )
-                        feedback_msg = "右臂 MoveIt! 目标已发送！等待规划和执行结果..."
-                        ros_handler.reset_latest_moveit_result()
-                    except Exception as e:
-                        # --- vvv 2. 在这里添加这两行 vvv ---
-                        print("--- AN EXCEPTION OCCURRED ---")
-                        traceback.print_exc() 
-                        # --- ^^^ ---
-                        feedback_msg = f"发送右臂 MoveIt! 目标失败: {e}"
-                        return html.Div(feedback_msg, className="alert alert-danger")
+                    target_joint_angles_rad = [math.radians(deg) for deg in right_arm_angles_deg]
+                    ros_handler.send_moveit_joint_goal(
+                        config.PLANNING_GROUP_RIGHT_ARM,
+                        config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
+                        target_joint_angles_rad,
+                        velocity_scaling_factor=playback_speed_for_moveit
+                    )
+                    feedback_msg = "右臂 MoveIt! 目标已发送！等待规划和执行结果..."
+                    ros_handler.reset_latest_moveit_result()
                 else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
+            
+            elif button_id == "send-pose-goal-button":
+                if any(v is None for v in [pos_x, pos_y, pos_z, ori_w, ori_x, ori_y, ori_z]):
+                    return html.Div("错误: 请填写所有位置和姿态的输入框。", className="alert alert-danger")
+                if not pose_arm_select:
+                    return html.Div("错误: 请选择一个控制组 (左臂/右臂)。", className="alert alert-danger")
+                try:
+                    pose_data = {
+                        "position": {"x": float(pos_x), "y": float(pos_y), "z": float(pos_z)},
+                        "orientation": {"w": float(ori_w), "x": float(ori_x), "y": float(ori_y), "z": float(ori_z)}
+                    }
+                except (ValueError, TypeError):
+                    return html.Div("错误: 位姿输入值必须是有效的数字。", className="alert alert-danger")
+                ros_handler.send_moveit_pose_goal(
+                    planning_group=pose_arm_select,
+                    pose_data=pose_data,
+                    velocity_scaling_factor=playback_speed_for_moveit
+                )
+                feedback_msg = f"位姿目标已发送至 {pose_arm_select}！等待规划和执行结果..."
+                ros_handler.reset_latest_moveit_result()
 
             elif button_id == "send-head-servo-button":
                 if ros_handler.head_servo_pub:
@@ -208,6 +226,7 @@ def register_callbacks(app):
 
         except Exception as e:
             print(f"发送指令时出错 ({button_id}): {e}")
+            traceback.print_exc()
             return html.Div(f"发送指令错误: {e}", className="alert alert-danger")
 
     # 这是修复后的正确代码，请用它替换上面的旧函数

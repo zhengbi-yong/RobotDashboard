@@ -78,3 +78,8 @@ ARM_SLIDER_MARKS_STEP = 50
 PLAYBACK_SPEED_DEFAULT = 0.3
 PLAYBACK_DELAY_DEFAULT = 2.0
 
+PLANNING_FRAME = "base_link"  # 或者您机器人的主坐标系名称
+END_EFFECTOR_LINKS = {
+    PLANNING_GROUP_LEFT_ARM: "l_hand_base_link",
+    PLANNING_GROUP_RIGHT_ARM: "r_hand_base_link"
+}

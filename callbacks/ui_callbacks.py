@@ -7,10 +7,14 @@ import roslibpy
 import json
 import time
 import math
+import traceback
 
 from .. import config
 from ..ros_comms import handler as ros_handler
 from ..utils import trajectory_manager as traj_manager
+
+_last_moveit_result_ui_timestamp = 0
+_last_moveit_error_code_ui = None
 
 def register_callbacks(app):
     @app.callback(
@@ -43,10 +47,6 @@ def register_callbacks(app):
             if ros_handler.ros_client and ros_handler.ros_client.is_connected:
                 print("ROS 客户端已连接。正在终止现有连接以重新连接。")
                 ros_handler.safe_terminate_ros_client()
-                if ros_handler.subscriber_thread and ros_handler.subscriber_thread.is_alive():
-                    ros_handler.subscriber_thread.join(timeout=0.5)
-                if ros_handler.ros_connection_thread and ros_handler.ros_connection_thread.is_alive():
-                    ros_handler.ros_connection_thread.join(timeout=0.5)
                 time.sleep(1.0)
 
             ros_handler.try_connect_ros()
@@ -54,6 +54,31 @@ def register_callbacks(app):
             button_disabled_flag = True
             
         return current_status_display, button_disabled_flag
+
+    @app.callback(
+        Output("action-feedback-display", "children", allow_duplicate=True),
+        Input("interval-ros-status-update", "n_intervals"),
+        prevent_initial_call=True
+    )
+    def display_moveit_feedback(n_intervals):
+        global _last_moveit_result_ui_timestamp, _last_moveit_error_code_ui
+
+        current_moveit_result = ros_handler.get_latest_moveit_result()
+        if current_moveit_result['timestamp'] > _last_moveit_result_ui_timestamp:
+            _last_moveit_result_ui_timestamp = current_moveit_result['timestamp']
+            _last_moveit_error_code_ui = current_moveit_result['error_code']
+
+            if _last_moveit_error_code_ui == 1:
+                return html.Div("MoveIt! 目标已成功规划并执行。", className="alert alert-success")
+            elif _last_moveit_error_code_ui is not None:
+                error_map = {
+                    -1: "规划失败",
+                    -2: "执行失败",
+                    -3: "无效目标",
+                }
+                error_msg = error_map.get(_last_moveit_error_code_ui, f"未知错误代码: {_last_moveit_error_code_ui}")
+                return html.Div(f"MoveIt! 目标失败: {error_msg} (代码: {_last_moveit_error_code_ui})", className="alert alert-danger")
+        return no_update
 
 
     @app.callback(
@@ -63,37 +88,36 @@ def register_callbacks(app):
          Input("send-head-servo-button", "n_clicks"),
          Input("send-left-hand-button", "n_clicks"),
          Input("send-right-hand-button", "n_clicks"),
-         Input("send-nav-command-button", "n_clicks")], # MODIFIED: Added nav button input
-        # Arm states (7 each)
+         Input("send-nav-command-button", "n_clicks")],
         [State(f"l_arm_slider_{i}", "value") for i in range(7)] +
         [State(f"r_arm_slider_{i}", "value") for i in range(7)] +
-        # Head states (2)
         [State("head-tilt-slider", "value"), State("head-pan-slider", "value")] +
-        # Hand states (6 each)
         [State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
         [State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
-        [State("nav-point-dropdown", "value")], # MODIFIED: Added nav point state
+        [State("nav-point-dropdown", "value")] +
+        [State("playback-speed-slider", "value")],
         prevent_initial_call=True
     )
-    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav, *slider_values): # MODIFIED: Added n_nav
+    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav,
+                              l_arm_s0, l_arm_s1, l_arm_s2, l_arm_s3, l_arm_s4, l_arm_s5, l_arm_s6,
+                              r_arm_s0, r_arm_s1, r_arm_s2, r_arm_s3, r_arm_s4, r_arm_s5, r_arm_s6,
+                              head_tilt_val, head_pan_val,
+                              l_hand_s0, l_hand_s1, l_hand_s2, l_hand_s3, l_hand_s4, l_hand_s5,
+                              r_hand_s0, r_hand_s1, r_hand_s2, r_hand_s3, r_hand_s4, r_hand_s5,
+                              selected_nav_point,
+                              playback_speed_for_moveit
+                              ):
         ctx = callback_context
         button_id = ctx.triggered_id
 
         if not button_id:
             return no_update
 
-        # Unpack slider_values and nav_point. Be careful with index if adding/removing states.
-        # The last value in slider_values tuple will be the selected_nav_point
-        # Unpack slider_values based on their order in State
-        left_arm_angles_deg = slider_values[0:7]
-        right_arm_angles_deg = slider_values[7:14]
-        head_tilt_val = slider_values[14]
-        head_pan_val = slider_values[15]
-        left_hand_angles_raw = slider_values[16 : 16 + len(config.LEFT_HAND_DOF_NAMES)]
-        right_hand_angles_raw = slider_values[16 + len(config.LEFT_HAND_DOF_NAMES) : 16 + len(config.LEFT_HAND_DOF_NAMES) + len(config.RIGHT_HAND_DOF_NAMES)]
-        selected_nav_point = slider_values[-1] # MODIFIED: Get the last state for navigation
+        left_arm_angles_deg = [l_arm_s0, l_arm_s1, l_arm_s2, l_arm_s3, l_arm_s4, l_arm_s5, l_arm_s6]
+        right_arm_angles_deg = [r_arm_s0, r_arm_s1, r_arm_s2, r_arm_s3, r_arm_s4, r_arm_s5, r_arm_s6]
+        left_hand_angles_raw = [l_hand_s0, l_hand_s1, l_hand_s2, l_hand_s3, l_hand_s4, l_hand_s5]
+        right_hand_angles_raw = [r_hand_s0, r_hand_s1, r_hand_s2, r_hand_s3, r_hand_s4, r_hand_s5]
 
-        # Convert hand angles to int as per message spec
         left_hand_angles_int = [int(a) for a in left_hand_angles_raw]
         right_hand_angles_int = [int(a) for a in right_hand_angles_raw]
 
@@ -103,24 +127,51 @@ def register_callbacks(app):
                 return html.Div("ROS 未连接或设置未完成。无法发送指令。", className="alert alert-danger")
 
             if button_id == "send-left-arm-button":
-                if ros_handler.left_arm_pub:
-                    msg_data = {'joint': [a * (math.pi / 180.0) for a in left_arm_angles_deg], 'speed': 0.3, 'trajectory_connect': 0}
-                    ros_handler.left_arm_pub.publish(roslibpy.Message(msg_data))
-                    feedback_msg = "左臂指令已发送!"
-                else: return html.Div("左臂 Publisher 不可用。", className="alert alert-warning")
+                if ros_handler.moveit_action_client:
+                    try:
+                        target_joint_angles_rad = [math.radians(deg) for deg in left_arm_angles_deg]
+                        ros_handler.send_moveit_joint_goal(
+                            config.PLANNING_GROUP_LEFT_ARM,
+                            config.LEFT_ARM_JOINT_NAMES_INTERNAL,
+                            target_joint_angles_rad,
+                            velocity_scaling_factor=playback_speed_for_moveit
+                        )
+                        feedback_msg = "左臂 MoveIt! 目标已发送！等待规划和执行结果..."
+                        ros_handler.reset_latest_moveit_result()
+                    except Exception as e:
+                        # --- vvv 2. 在这里添加这两行 vvv ---
+                        print("--- AN EXCEPTION OCCURRED ---")
+                        traceback.print_exc() 
+                        # --- ^^^ ---
+                        feedback_msg = f"发送左臂 MoveIt! 目标失败: {e}"
+                        return html.Div(feedback_msg, className="alert alert-danger")
+                else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
             elif button_id == "send-right-arm-button":
-                if ros_handler.right_arm_pub:
-                    msg_data = {'joint': [a * (math.pi / 180.0) for a in right_arm_angles_deg], 'speed': 0.3, 'trajectory_connect': 0}
-                    ros_handler.right_arm_pub.publish(roslibpy.Message(msg_data))
-                    feedback_msg = "右臂指令已发送!"
-                else: return html.Div("右臂 Publisher 不可用。", className="alert alert-warning")
+                if ros_handler.moveit_action_client:
+                    try:
+                        target_joint_angles_rad = [math.radians(deg) for deg in right_arm_angles_deg]
+                        ros_handler.send_moveit_joint_goal(
+                            config.PLANNING_GROUP_RIGHT_ARM,
+                            config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
+                            target_joint_angles_rad,
+                            velocity_scaling_factor=playback_speed_for_moveit
+                        )
+                        feedback_msg = "右臂 MoveIt! 目标已发送！等待规划和执行结果..."
+                        ros_handler.reset_latest_moveit_result()
+                    except Exception as e:
+                        # --- vvv 2. 在这里添加这两行 vvv ---
+                        print("--- AN EXCEPTION OCCURRED ---")
+                        traceback.print_exc() 
+                        # --- ^^^ ---
+                        feedback_msg = f"发送右臂 MoveIt! 目标失败: {e}"
+                        return html.Div(feedback_msg, className="alert alert-danger")
+                else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
 
             elif button_id == "send-head-servo-button":
                 if ros_handler.head_servo_pub:
                     ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(head_tilt_val)}))
                     time.sleep(0.05)
                     ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(head_pan_val)}))
-                    # Update latest_joint_states for head after sending command
                     ros_handler.latest_joint_states['head_tilt_servo'] = float(head_tilt_val)
                     ros_handler.latest_joint_states['head_pan_servo'] = float(head_pan_val)
                     feedback_msg = "头部伺服指令已发送!"
@@ -130,7 +181,6 @@ def register_callbacks(app):
                 if ros_handler.left_hand_pub:
                     msg_data = {'hand_angle': left_hand_angles_int}
                     ros_handler.left_hand_pub.publish(roslibpy.Message(msg_data))
-                    # Update latest_joint_states for left hand after sending command
                     for i, dof_name in enumerate(config.LEFT_HAND_DOF_NAMES):
                         ros_handler.latest_joint_states[dof_name] = float(left_hand_angles_int[i])
                     feedback_msg = "左手指令已发送!"
@@ -140,13 +190,12 @@ def register_callbacks(app):
                 if ros_handler.right_hand_pub:
                     msg_data = {'hand_angle': right_hand_angles_int}
                     ros_handler.right_hand_pub.publish(roslibpy.Message(msg_data))
-                    # Update latest_joint_states for right hand after sending command
                     for i, dof_name in enumerate(config.RIGHT_HAND_DOF_NAMES):
                         ros_handler.latest_joint_states[dof_name] = float(right_hand_angles_int[i])
                     feedback_msg = "右手指令已发送!"
                 else: return html.Div("右手 Publisher 不可用。", className="alert alert-warning")
             
-            elif button_id == "send-nav-command-button": # NEW: Navigation command logic
+            elif button_id == "send-nav-command-button":
                 if not selected_nav_point:
                     return html.Div("请选择一个导航目标点。", className="alert alert-warning")
                 if ros_handler.nav_pub:
@@ -161,26 +210,24 @@ def register_callbacks(app):
             print(f"发送指令时出错 ({button_id}): {e}")
             return html.Div(f"发送指令错误: {e}", className="alert alert-danger")
 
-    # --- update_joint_state_display callback ---
     @app.callback(
         [Output("arm-states-display", "children"), Output("head-states-display", "children")],
         [Input("interval-joint-state-update", "n_intervals"), Input("refresh-states-button", "n_clicks")]
     )
     def update_joint_state_display(n_intervals, n_refresh):
-        arm_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.LEFT_ARM_JOINT_NAMES_INTERNAL + config.RIGHT_ARM_JOINT_NAMES_INTERNAL}
+        arm_states_to_display = {
+            name: round(ros_handler.latest_joint_states.get(name, 0.0) * (180.0 / math.pi), 2)
+            for name in config.LEFT_ARM_JOINT_NAMES_INTERNAL + config.RIGHT_ARM_JOINT_NAMES_INTERNAL
+        }
         head_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.HEAD_SERVO_RANGES.keys()}
         return json.dumps(arm_states_to_display, indent=2), json.dumps(head_states_to_display, indent=2)
 
 
-    # --- sync_sliders_to_robot_state callback ---
     @app.callback(
-        # Arm slider outputs (7 each)
         [Output(f"l_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)] +
         [Output(f"r_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)] +
-        # Head slider outputs (2)
         [Output("head-tilt-slider", "value", allow_duplicate=True),
          Output("head-pan-slider", "value", allow_duplicate=True)] +
-        # Hand slider outputs (6 each)
         [Output(f"l_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
         [Output(f"r_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
         [Output("action-feedback-display", "children", allow_duplicate=True)],
@@ -204,7 +251,6 @@ def register_callbacks(app):
         feedback = html.Div("滑块已同步至当前机器人状态/指令值。", className="alert alert-info")
         return *all_slider_updates, feedback
 
-    # --- update_trajectory_dropdown ---
     @app.callback(
         Output("trajectory-select-dropdown", "options"),
         [Input("refresh-trajectory-list-button", "n_clicks"),
@@ -213,7 +259,6 @@ def register_callbacks(app):
     def update_trajectory_dropdown(n_refresh, n_save):
         return traj_manager.get_trajectory_files_options()
 
-    # --- handle_delete_trajectory_point ---
     @app.callback(
         [Output("action-feedback-display", "children", allow_duplicate=True),
          Output("recorded-positions-count-display", "children", allow_duplicate=True),
@@ -245,7 +290,6 @@ def register_callbacks(app):
         
         return html.Div(feedback_msg, className=f"alert alert-{feedback_type} mt-2"), count_display_text, list_display_children, new_playback_store_data
 
-    # --- handle_record_save_load_trajectory ---
     @app.callback(
         [Output("action-feedback-display", "children", allow_duplicate=True),
          Output("recorded-positions-count-display", "children", allow_duplicate=True),
@@ -312,7 +356,6 @@ def register_callbacks(app):
         
         return html.Div(feedback_msg, className=f"alert alert-{feedback_type} mt-2"), count_display_text, list_display_children, new_playback_store_data
     
-    # --- Replay Callbacks ---
     @app.callback(
         Output("action-feedback-display", "children", allow_duplicate=True),
         Input("replay-once-button", "n_clicks"),
@@ -328,41 +371,68 @@ def register_callbacks(app):
             return html.Div("活跃轨迹中无位置点可回放。", className="alert alert-warning")
 
         print(f"开始单次回放 {len(current_trajectory)} 个位置点...")
+        feedback_msgs = []
         try:
             for i, pos_data in enumerate(current_trajectory):
-                # Arm commands
-                if ros_handler.left_arm_pub:
-                    left_targets = [pos_data.get(j, ros_handler.latest_joint_states.get(j, 0.0)) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
-                    ros_handler.left_arm_pub.publish(roslibpy.Message({'joint': left_targets, 'speed': playback_speed, 'trajectory_connect': 0}))
-                if ros_handler.right_arm_pub:
-                    right_targets = [pos_data.get(j, ros_handler.latest_joint_states.get(j, 0.0)) for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL]
-                    ros_handler.right_arm_pub.publish(roslibpy.Message({'joint': right_targets, 'speed': playback_speed, 'trajectory_connect': 0}))
-                time.sleep(0.05)
-                # Head commands
+                if ros_handler.moveit_action_client:
+                    left_targets_rad = [pos_data.get(j, ros_handler.latest_joint_states.get(j, 0.0)) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
+                    right_targets_rad = [pos_data.get(j, ros_handler.latest_joint_states.get(j, 0.0)) for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL]
+                    
+                    try:
+                        ros_handler.send_moveit_joint_goal(
+                            config.PLANNING_GROUP_LEFT_ARM,
+                            config.LEFT_ARM_JOINT_NAMES_INTERNAL,
+                            left_targets_rad,
+                            velocity_scaling_factor=playback_speed
+                        )
+                        ros_handler.send_moveit_joint_goal(
+                            config.PLANNING_GROUP_RIGHT_ARM,
+                            config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
+                            right_targets_rad,
+                            velocity_scaling_factor=playback_speed
+                        )
+                        feedback_msgs.append(f"点 {i+1}: 已发送 MoveIt! 手臂目标。")
+                        ros_handler.reset_latest_moveit_result()
+                    except Exception as e:
+                        print(f"Error sending MoveIt! goal during replay (point {i+1}): {e}")
+                        feedback_msgs.append(f"点 {i+1}: 发送 MoveIt! 目标失败: {e}")
+                else:
+                    feedback_msgs.append(f"点 {i+1}: MoveIt! Action Client 未就绪，无法回放手臂。")
+
                 if ros_handler.head_servo_pub:
                     head_tilt_target = pos_data.get('head_tilt_servo', config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'])
-                    ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(head_tilt_target)}))
-                    time.sleep(0.02)
                     head_pan_target = pos_data.get('head_pan_servo', config.HEAD_SERVO_RANGES['head_pan_servo']['neutral'])
-                    ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(head_pan_target)}))
+                    try:
+                        ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(head_tilt_target)}))
+                        time.sleep(0.02)
+                        ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(head_pan_target)}))
+                        feedback_msgs.append(f"点 {i+1}: 已发送头部伺服指令。")
+                    except Exception as e:
+                        feedback_msgs.append(f"点 {i+1}: 发送头部伺服指令失败: {e}")
                 
-                # Hand commands
-                time.sleep(0.05)
                 if ros_handler.left_hand_pub:
                     left_hand_targets_int = [int(pos_data.get(dof, config.DEFAULT_HAND_ANGLE)) for dof in config.LEFT_HAND_DOF_NAMES]
-                    ros_handler.left_hand_pub.publish(roslibpy.Message({'hand_angle': left_hand_targets_int}))
+                    try:
+                        ros_handler.left_hand_pub.publish(roslibpy.Message({'hand_angle': left_hand_targets_int}))
+                        feedback_msgs.append(f"点 {i+1}: 已发送左手指令。")
+                    except Exception as e:
+                        feedback_msgs.append(f"点 {i+1}: 发送左手指令失败: {e}")
                 if ros_handler.right_hand_pub:
                     right_hand_targets_int = [int(pos_data.get(dof, config.DEFAULT_HAND_ANGLE)) for dof in config.RIGHT_HAND_DOF_NAMES]
-                    ros_handler.right_hand_pub.publish(roslibpy.Message({'hand_angle': right_hand_targets_int}))
+                    try:
+                        ros_handler.right_hand_pub.publish(roslibpy.Message({'hand_angle': right_hand_targets_int}))
+                        feedback_msgs.append(f"点 {i+1}: 已发送右手指令。")
+                    except Exception as e:
+                        feedback_msgs.append(f"点 {i+1}: 发送右手指令失败: {e}")
 
                 time.sleep(max(0.1, point_delay_sec))
+            
             print("单次回放完成。")
-            return html.Div("单次回放完成。", className="alert alert-success")
+            return html.Div([html.P("单次回放完成。"), html.Ul([html.Li(msg) for msg in feedback_msgs])], className="alert alert-success")
         except Exception as e:
             print(f"回放过程中发生错误: {e}")
             return html.Div(f"回放错误: {e}", className="alert alert-danger")
 
-    # manage_continuous_replay_controls
     @app.callback(
         [Output("continuous-playback-interval", "disabled"),
          Output("continuous-playback-interval", "interval"),
@@ -387,11 +457,14 @@ def register_callbacks(app):
                 feedback_text, feedback_type = "无活跃轨迹可供连续回放。", "warning"
             elif not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done):
                 feedback_text, feedback_type = "ROS未就绪，无法开始连续回放。", "danger"
+            elif not ros_handler.moveit_action_client:
+                feedback_text, feedback_type = "MoveIt! Action Client 未就绪，无法开始连续回放。", "danger"
             else:
                 new_p_state_manage['is_repeating'] = True; new_p_state_manage['current_index'] = 0
                 interval_disabled = False;
                 start_button_disabled = True; stop_button_disabled = False
                 feedback_text, feedback_type = "连续回放已开始。", "success"
+                ros_handler.reset_latest_moveit_result()
         elif button_id == "stop-continuous-replay-button":
             if not n_stop: return interval_disabled, interval_ms, start_button_disabled, stop_button_disabled, new_p_state_manage, no_update
             new_p_state_manage['is_repeating'] = False
@@ -401,17 +474,13 @@ def register_callbacks(app):
         return interval_disabled, interval_ms, start_button_disabled, stop_button_disabled, new_p_state_manage, html.Div(feedback_text,className=f"alert alert-{feedback_type}")
 
 
-    # execute_continuous_playback_step
     @app.callback(
         [Output("playback-state-store", "data", allow_duplicate=True),
          Output("action-feedback-display", "children", allow_duplicate=True),
-         # Arm slider outputs
          *[Output(f"l_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)],
          *[Output(f"r_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)],
-         # Head slider outputs
          Output("head-tilt-slider", "value", allow_duplicate=True),
          Output("head-pan-slider", "value", allow_duplicate=True),
-         # Hand slider outputs
          *[Output(f"l_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.LEFT_HAND_DOF_NAMES))],
          *[Output(f"r_hand_slider_{i}", "value", allow_duplicate=True) for i in range(len(config.RIGHT_HAND_DOF_NAMES))]
         ],
@@ -425,7 +494,9 @@ def register_callbacks(app):
         total_sliders = num_arm_head_sliders + num_hand_sliders
         slider_no_updates = [no_update] * total_sliders
 
-        if not current_p_state_exec.get('is_repeating') or not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done):
+        if not current_p_state_exec.get('is_repeating') or \
+           not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done) or \
+           not ros_handler.moveit_action_client:
             return current_p_state_exec, no_update, *slider_no_updates
 
         trajectory_to_play = current_p_state_exec.get('trajectory_for_repeat', [])
@@ -437,7 +508,6 @@ def register_callbacks(app):
 
         pos_data_exec = trajectory_to_play[current_idx]
         
-        # Prepare slider updates (arms, head, hands)
         l_arm_s_vals = [pos_data_exec.get(j, 0.0) * (180.0 / math.pi) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
         r_arm_s_vals = [pos_data_exec.get(j, 0.0) * (180.0 / math.pi) for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL]
         tilt_s_val = pos_data_exec.get('head_tilt_servo', config.HEAD_SERVO_RANGES['head_tilt_servo']['neutral'])
@@ -447,23 +517,32 @@ def register_callbacks(app):
         slider_updates_exec = l_arm_s_vals + r_arm_s_vals + [tilt_s_val, pan_s_val] + l_hand_s_vals + r_hand_s_vals
 
         feedback_message_exec = f"连续回放: 点 {current_idx + 1}/{len(trajectory_to_play)}"
-        print(feedback_message_exec)
         try:
-            # Arm commands
-            if ros_handler.left_arm_pub:
-                left_targets_exec = [pos_data_exec.get(j, ros_handler.latest_joint_states.get(j,0.0)) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
-                ros_handler.left_arm_pub.publish(roslibpy.Message({'joint': left_targets_exec, 'speed': playback_speed_exec, 'trajectory_connect': 0}))
-            if ros_handler.right_arm_pub:
-                right_targets_exec = [pos_data_exec.get(j, ros_handler.latest_joint_states.get(j,0.0)) for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL]
-                ros_handler.right_arm_pub.publish(roslibpy.Message({'joint': right_targets_exec, 'speed': playback_speed_exec, 'trajectory_connect': 0}))
-            time.sleep(0.05)
-            # Head commands
+            if ros_handler.moveit_action_client:
+                left_targets_rad_exec = [pos_data_exec.get(j, ros_handler.latest_joint_states.get(j,0.0)) for j in config.LEFT_ARM_JOINT_NAMES_INTERNAL]
+                right_targets_rad_exec = [pos_data_exec.get(j, ros_handler.latest_joint_states.get(j,0.0)) for j in config.RIGHT_ARM_JOINT_NAMES_INTERNAL]
+                
+                ros_handler.send_moveit_joint_goal(
+                    config.PLANNING_GROUP_LEFT_ARM,
+                    config.LEFT_ARM_JOINT_NAMES_INTERNAL,
+                    left_targets_rad_exec,
+                    velocity_scaling_factor=playback_speed_exec
+                )
+                ros_handler.send_moveit_joint_goal(
+                    config.PLANNING_GROUP_RIGHT_ARM,
+                    config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
+                    right_targets_rad_exec,
+                    velocity_scaling_factor=playback_speed_exec
+                )
+                ros_handler.reset_latest_moveit_result()
+            else:
+                feedback_message_exec += " (MoveIt! Action Client 未就绪，无法回放手臂。)"
+
             if ros_handler.head_servo_pub:
                 ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_tilt_servo']['id'], 'angle': int(tilt_s_val)}))
                 time.sleep(0.02)
                 ros_handler.head_servo_pub.publish(roslibpy.Message({'servo_id': config.HEAD_SERVO_RANGES['head_pan_servo']['id'], 'angle': int(pan_s_val)}))
 
-            # Hand commands for continuous playback
             time.sleep(0.05)
             if ros_handler.left_hand_pub:
                 left_hand_targets_int_exec = [int(pos_data_exec.get(dof, config.DEFAULT_HAND_ANGLE)) for dof in config.LEFT_HAND_DOF_NAMES]

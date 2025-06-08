@@ -12,11 +12,26 @@ ROS_BRIDGE_PORT = 9090
 LEFT_ARM_CMD_TOPIC = '/l_arm/rm_driver/MoveJ_Cmd'
 RIGHT_ARM_CMD_TOPIC = '/r_arm/rm_driver/MoveJ_Cmd'
 ARM_MSG_TYPE = 'dual_arm_msgs/MoveJ'
-LEFT_ARM_STATE_TOPIC = '/l_arm/joint_states'
-RIGHT_ARM_STATE_TOPIC = '/r_arm/joint_states'
+LEFT_ARM_STATE_TOPIC = '/get_left_arm_degree'
+RIGHT_ARM_STATE_TOPIC = '/get_right_arm_degree'
 ARM_STATE_MSG_TYPE = 'sensor_msgs/JointState'
-LEFT_ARM_JOINT_NAMES_INTERNAL = [f'l_j{i+1}' for i in range(7)]
-RIGHT_ARM_JOINT_NAMES_INTERNAL = [f'r_j{i+1}' for i in range(7)]
+LEFT_ARM_JOINT_NAMES_INTERNAL = [f'l_joint{i+1}' for i in range(7)]
+RIGHT_ARM_JOINT_NAMES_INTERNAL = [f'r_joint{i+1}' for i in range(7)]
+
+# --- MoveIt! Action Server Configuration (NEW) ---
+MOVE_GROUP_ACTION_NAME = '/move_group'
+MOVE_GROUP_ACTION_TYPE = 'moveit_msgs/MoveGroupAction' # 注意：这需要你的ROS环境中有 moveit_msgs 包
+
+# MoveIt! Planning Parameters
+PLANNING_GROUP_LEFT_ARM = 'l_arm' # 在你的SRDF文件中定义的左臂规划组名称
+PLANNING_GROUP_RIGHT_ARM = 'r_arm' # 在你的SRDF文件中定义的右臂规划组名称
+PLANNER_ID = "RRTConnect" # 推荐的快速规划器，你可以改为你配置的任何规划器，例如 "PRMstarkConfigDefault"
+
+NUM_PLANNING_ATTEMPTS = 5
+ALLOWED_PLANNING_TIME = 5.0
+VELOCITY_SCALING_FACTOR = 0.5 # 默认速度缩放因子
+ACCELERATION_SCALING_FACTOR = 0.5 # 默认加速度缩放因子
+
 
 # --- HEAD ---
 HEAD_SERVO_CMD_TOPIC = '/servo_control/move'
@@ -62,3 +77,4 @@ ARM_SLIDER_MARKS_STEP = 50
 
 PLAYBACK_SPEED_DEFAULT = 0.3
 PLAYBACK_DELAY_DEFAULT = 2.0
+

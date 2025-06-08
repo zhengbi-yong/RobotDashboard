@@ -210,17 +210,45 @@ def register_callbacks(app):
             print(f"发送指令时出错 ({button_id}): {e}")
             return html.Div(f"发送指令错误: {e}", className="alert alert-danger")
 
+    # 这是修复后的正确代码，请用它替换上面的旧函数
+
     @app.callback(
-        [Output("arm-states-display", "children"), Output("head-states-display", "children")],
-        [Input("interval-joint-state-update", "n_intervals"), Input("refresh-states-button", "n_clicks")]
+        # 关键改动：Output从一个手臂组件变成了两个独立的组件
+        Output("left-arm-states-display", "children"),
+        Output("right-arm-states-display", "children"),
+        Output("head-states-display", "children"),
+        # Input保持不变
+        Input("interval-joint-state-update", "n_intervals"),
+        Input("refresh-states-button", "n_clicks")
     )
     def update_joint_state_display(n_intervals, n_refresh):
-        arm_states_to_display = {
-            name: round(ros_handler.latest_joint_states.get(name, 0.0) * (180.0 / math.pi), 2)
-            for name in config.LEFT_ARM_JOINT_NAMES_INTERNAL + config.RIGHT_ARM_JOINT_NAMES_INTERNAL
-        }
-        head_states_to_display = {name: ros_handler.latest_joint_states.get(name, "N/A") for name in config.HEAD_SERVO_RANGES.keys()}
-        return json.dumps(arm_states_to_display, indent=2), json.dumps(head_states_to_display, indent=2)
+        # 从ros_handler获取最新的完整状态字典
+        latest_states = ros_handler.latest_joint_states
+
+        # --- 为左臂构建显示字符串 ---
+        # 新布局的标签是 (rad)，所以我们直接显示弧度值
+        left_arm_lines = []
+        for name in config.LEFT_ARM_JOINT_NAMES_INTERNAL:
+            state = latest_states.get(name, 0.0)
+            left_arm_lines.append(f"{name}: {state:.4f}") # 使用4位小数的弧度值
+        left_arm_str = "\n".join(left_arm_lines)
+        
+        # --- 为右臂构建显示字符串 ---
+        right_arm_lines = []
+        for name in config.RIGHT_ARM_JOINT_NAMES_INTERNAL:
+            state = latest_states.get(name, 0.0)
+            right_arm_lines.append(f"{name}: {state:.4f}")
+        right_arm_str = "\n".join(right_arm_lines)
+
+        # --- 为头部构建显示字符串 ---
+        head_lines = []
+        for name in config.HEAD_SERVO_RANGES.keys():
+            state = latest_states.get(name, "N/A")
+            head_lines.append(f"{name}: {state}")
+        head_str = "\n".join(head_lines)
+
+        # 关键改动：返回三个值，与上面的三个Output一一对应
+        return left_arm_str, right_arm_str, head_str
 
 
     @app.callback(

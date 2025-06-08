@@ -1,5 +1,3 @@
-# RobotDashboard/components/layout.py
-
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 from .. import config
@@ -90,9 +88,9 @@ def create_layout():
                 dbc.Col(html.Div(id="ros-connection-status-display", children=f"状态: 未连接", className="align-self-center text-md-left text-center p-2 border rounded bg-light"), width=12, md=8)
             ], align="center")
         ])
-    ], className="mb-4")
+    ])
 
-    # --- Navigation Control Card --- NEW
+    # --- Navigation Control Card ---
     nav_control_card_content = [
         dbc.CardHeader("导航控制 (Navigation Control)"),
         dbc.CardBody([
@@ -109,34 +107,29 @@ def create_layout():
         ])
     ]
 
+    # --- NEW: Individual State Display Cards ---
+    left_arm_states_card_content = [
+        dbc.CardHeader("左臂状态 (rad)"),
+        dbc.CardBody(dbc.Alert(html.Pre(id="left-arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'margin': '0'}), color="secondary", className="mb-0 p-2"))
+    ]
+    right_arm_states_card_content = [
+        dbc.CardHeader("右臂状态 (rad)"),
+        dbc.CardBody(dbc.Alert(html.Pre(id="right-arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'margin': '0'}), color="secondary", className="mb-0 p-2"))
+    ]
+    head_states_card_content = [
+        dbc.CardHeader("头部状态 (raw)"),
+        dbc.CardBody(dbc.Alert(html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'margin': '0'}), color="secondary", className="mb-0 p-2"))
+    ]
 
-    # --- Current Joint States Card ---
-    joint_states_card_content = [
-        dbc.CardHeader("当前关节与传感器状态 (Current States)"), # Updated title
-        dbc.CardBody([
+    # --- NEW: Global Actions Card ---
+    global_actions_card_content = [
+        dbc.CardHeader("全局操作 (Global Actions)"),
+        dbc.CardBody(
             dbc.Row([
-                dbc.Col(dbc.Button("手动刷新", id="refresh-states-button", color="info", outline=True, size="sm", className="me-2"), width="auto"),
-                dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, size="sm"), width="auto")
-            ], className="mb-3 justify-content-start"),
-            dbc.Row([
-                dbc.Col([
-                    html.H5("手臂关节 (rad):"),
-                    dbc.Alert(
-                        html.Pre(id="arm-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '118px', 'overflowY': 'auto', 'margin': '0'}),
-                        color="secondary",
-                        className="mb-0"
-                    )
-                ], md=6, className="mb-3 mb-md-0"),
-                dbc.Col([
-                    html.H5("头部伺服 (raw):"),
-                    dbc.Alert(
-                        html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'maxHeight': '38px', 'overflowY': 'auto', 'margin': '0'}),
-                        color="secondary",
-                        className="mb-0"
-                    )
-                ], md=6)
+                dbc.Col(dbc.Button("手动刷新所有状态", id="refresh-states-button", color="info", outline=True, className="w-100"), md=6, className="d-grid mb-2 mb-md-0"),
+                dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, className="w-100"), md=6, className="d-grid")
             ])
-        ])
+        )
     ]
 
     # --- Trajectory Management Card ---
@@ -180,42 +173,62 @@ def create_layout():
         ])
     ]
 
+    # --- Main Layout Definition ---
     layout = dbc.Container([
+        # Hidden stores and intervals
         dcc.Store(id='playback-state-store', data={'is_repeating': False, 'current_index': 0, 'trajectory_for_repeat': []}),
         dcc.Interval(id='continuous-playback-interval', interval=2000, n_intervals=0, disabled=True),
         dcc.Interval(id='interval-ros-status-update', interval=1000, n_intervals=0),
         dcc.Interval(id='interval-joint-state-update', interval=500, n_intervals=0),
 
+        # --- Header ---
         dbc.Row(dbc.Col(html.H1("机器人控制与监控面板", className="text-center my-4"))),
-        ros_connection_section,
         
-        # NEW NAVIGATION SECTION
+        # --- Top Section: Connection, Head ---
         dbc.Row([
-            dbc.Col(dbc.Card(nav_control_card_content, className="mb-4"), sm=12, md=6, lg=4)
-        ], justify="center"),
+            dbc.Col(ros_connection_section, width=12, lg=4), # Top-Left
+            dbc.Col([ # Top-Center
+                dbc.Card(head_servo_card_content, className="mb-2"),
+                dbc.Card(head_states_card_content) # Head status directly below
+            ], width=12, lg=4),
+            dbc.Col(width=12, lg=4) # Empty spacer column
+        ], align="start", justify="start", className="mb-4"),
+
+        html.Hr(),
+
+        # --- Main Workspace: Arms, Trajectory, and States ---
+        dbc.Row([
+            # -- Left Column: Left Arm Control and State --
+            dbc.Col([
+                dbc.Card(left_arm_card_content, className="mb-4"),
+                dbc.Card(left_hand_card_content, className="mb-4"),
+                dbc.Card(left_arm_states_card_content, className="mb-4")
+            ], width=12, lg=3),
+
+            # -- Center Column: Trajectory and Global Actions --
+            dbc.Col([
+                dbc.Card(global_actions_card_content, className="mb-4"),
+                dbc.Card(trajectory_management_card_content, className="mb-4"),
+                dbc.Card(trajectory_playback_card_content, className="mb-4"),
+            ], width=12, lg=6),
+
+            # -- Right Column: Right Arm Control and State --
+            dbc.Col([
+                dbc.Card(right_arm_card_content, className="mb-4"),
+                dbc.Card(right_hand_card_content, className="mb-4"),
+                dbc.Card(right_arm_states_card_content, className="mb-4")
+            ], width=12, lg=3),
+        ]),
 
         html.Hr(className="my-4"),
 
-        # Main content area with four columns
-        dbc.Row([
-            dbc.Col([ # Column 1: Arms
-                dbc.Card(left_arm_card_content, className="mb-4"),
-                dbc.Card(right_arm_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3),
-            dbc.Col([ # Column 2: Head and Hands
-                dbc.Card(head_servo_card_content, className="mb-4"),
-                dbc.Card(left_hand_card_content, className="mb-4"),
-                dbc.Card(right_hand_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3),
-            dbc.Col([ # Column 3: States and Trajectory Management
-                dbc.Card(joint_states_card_content, className="mb-4"),
-                dbc.Card(trajectory_management_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3),
-             dbc.Col([ # Column 4: Trajectory Playback
-                dbc.Card(trajectory_playback_card_content, className="mb-4")
-            ], sm=12, md=6, lg=3)
-        ]),
-        
+        # --- Bottom Section: Navigation ---
+        dbc.Row(
+            dbc.Col(dbc.Card(nav_control_card_content, className="mb-4"), width=12, lg=8),
+            justify="center"
+        ),
+
+        # --- Footer ---
         html.Footer(
             dbc.Row(dbc.Col(html.P("请注意：浏览器刷新页面可能会导致已记录但未保存的位置数据丢失。", className="text-muted text-center small mt-5"))),
         )

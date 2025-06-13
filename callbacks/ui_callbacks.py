@@ -624,3 +624,56 @@ def register_callbacks(app):
         if selected_preset and selected_preset.strip():
             return selected_preset
         return current_input or ""
+
+    # --- Arms Reset to Home Position Callback ---
+    @app.callback(
+        [Output("action-feedback-display", "children", allow_duplicate=True),
+         *[Output(f"l_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)],
+         *[Output(f"r_arm_slider_{i}", "value", allow_duplicate=True) for i in range(7)]],
+        Input("reset-both-arms-button", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def reset_both_arms_to_home(n_clicks):
+        """Reset both arms to their home positions and update UI sliders"""
+        if not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done):
+            return html.Div("错误: ROS未连接或未完成设置。", className="alert alert-danger"), *([no_update] * 14)
+        
+        try:
+            # Define home positions
+            # Left arm: [0, -90, 0, 0, 0, 0, 0] degrees
+            # Right arm: [0, 90, 0, 0, 0, 0, -180] degrees
+            left_arm_home_deg = [0, -90, 0, 0, 0, 0, 0]
+            right_arm_home_deg = [0, 90, 0, 0, 0, 0, -180]
+            
+            # Convert to radians for ROS commands
+            import math
+            left_arm_home_rad = [math.radians(deg) for deg in left_arm_home_deg]
+            right_arm_home_rad = [math.radians(deg) for deg in right_arm_home_deg]
+            
+            # # Send left arm command
+            left_arm_success = ros_handler.send_moveit_joint_goal(
+                planning_group_name=config.PLANNING_GROUP_LEFT_ARM,
+                joint_names=config.LEFT_ARM_JOINT_NAMES_INTERNAL,
+                target_joint_angles_rad=left_arm_home_rad,
+            )
+
+            time.sleep(3)  # Small delay to ensure command is processed
+            
+            # Send right arm command
+            right_arm_success = ros_handler.send_moveit_joint_goal(
+                planning_group_name=config.PLANNING_GROUP_RIGHT_ARM,
+                joint_names=config.RIGHT_ARM_JOINT_NAMES_INTERNAL,
+                target_joint_angles_rad=right_arm_home_rad,
+            )
+            
+            if left_arm_success and right_arm_success:
+                feedback_msg = html.Div("双臂归位指令已发送。左臂目标: [0°, -90°, 0°, 0°, 0°, 0°, 0°], 右臂目标: [0°, 90°, 0°, 0°, 0°, 0°, -180°]", className="alert alert-success")
+                # Update sliders to show the target positions
+                return feedback_msg, *left_arm_home_deg, *right_arm_home_deg
+            else:
+                feedback_msg = html.Div("双臂归位指令发送失败。请检查ROS连接。", className="alert alert-danger")
+                return feedback_msg, *([no_update] * 14)
+                
+        except Exception as e:
+            feedback_msg = html.Div(f"双臂归位时发生错误: {str(e)}", className="alert alert-danger")
+            return feedback_msg, *([no_update] * 14)

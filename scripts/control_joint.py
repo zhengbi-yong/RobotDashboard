@@ -10,12 +10,12 @@ from twisted.internet import reactor
 
 # --- 1. Configuration ---
 # ROS_BRIDGE_HOST = '192.168.0.105' # IMPORTANT: Change this to your robot's IP address
-ROS_BRIDGE_HOST = 'wanrenai.com' # IMPORTANT: Change this to your robot's IP address
+ROS_BRIDGE_HOST = 'www.wanrenai.com' # IMPORTANT: Change this to your robot's IP address
 ROS_BRIDGE_PORT = 9090
 MOVE_GROUP_ACTION_NAME = '/move_group'
 MOVE_GROUP_ACTION_TYPE = 'moveit_msgs/MoveGroupAction'
-PLANNING_GROUP_LEFT_ARM = 'l_arm'
-LEFT_ARM_JOINT_NAMES_INTERNAL = [f'l_joint{i+1}' for i in range(7)]
+PLANNING_GROUP_LEFT_ARM = 'r_arm'
+LEFT_ARM_JOINT_NAMES_INTERNAL = [f'r_joint{i+1}' for i in range(7)]
 
 # --- 2. Global Variables ---
 ros_client = None
@@ -95,7 +95,7 @@ def perform_actions_on_ready(client):
         print("MoveIt! Action Client initialized.")
 
         # Using the safe goal that we know works.
-        target_angles_deg = [15, -15, 0, 0, 0, 0, 0]
+        target_angles_deg = [0, 90, 0, 0, 0, 0, -180]
         print(f"Target angles (deg): {target_angles_deg}")
         target_angles_rad = [math.radians(deg) for deg in target_angles_deg]
 

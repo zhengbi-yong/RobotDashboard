@@ -134,17 +134,19 @@ def create_layout():
     head_states_card_content = [
         dbc.CardHeader("头部状态 (raw)"),
         dbc.CardBody(dbc.Alert(html.Pre(id="head-states-display", style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-all', 'margin': '0'}), color="secondary", className="mb-0 p-2"))
-    ]
-
-    # --- NEW: Global Actions Card ---
+    ]    # --- NEW: Global Actions Card ---
     global_actions_card_content = [
         dbc.CardHeader("全局操作 (Global Actions)"),
-        dbc.CardBody(
+        dbc.CardBody([
             dbc.Row([
                 dbc.Col(dbc.Button("手动刷新所有状态", id="refresh-states-button", color="info", outline=True, className="w-100"), md=6, className="d-grid mb-2 mb-md-0"),
                 dbc.Col(dbc.Button("同步滑块至状态", id="sync-sliders-to-state-button", color="secondary", outline=True, className="w-100"), md=6, className="d-grid")
+            ]),
+            html.Hr(className="my-3"),
+            dbc.Row([
+                dbc.Col(dbc.Button("双臂归位", id="reset-both-arms-button", color="warning", className="w-100"), md=12, className="d-grid")
             ])
-        )
+        ])
     ]
 
     # --- Trajectory Management Card ---

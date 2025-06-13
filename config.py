@@ -5,7 +5,9 @@ import os
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ROS Configuration
-ROS_BRIDGE_HOST = '192.168.0.105' # CHANGE THIS IF NEEDED
+# ROS_BRIDGE_HOST = '192.168.0.105' # CHANGE THIS IF NEEDED
+# ROS_BRIDGE_HOST = 'www.wanrenai.com' # CHANGE THIS IF NEEDED
+ROS_BRIDGE_HOST = '127.0.0.1' # CHANGE THIS IF NEEDED
 ROS_BRIDGE_PORT = 9090
 
 # --- ARM ---
@@ -61,7 +63,7 @@ HAND_MARKS_STEP = 200
 # --- NAVIGATION --- NEW SECTION
 NAV_CMD_TOPIC = '/navigation_marker'
 NAV_MSG_TYPE = 'std_msgs/String'
-PREDEFINED_NAV_POINTS = ['charging', 'path01', 'door'] + [f'seat{i:02d}' for i in range(1, 17)]
+PREDEFINED_NAV_POINTS = ['chongdian','chumen', 'quA7', 'gebigongsi', 'A7kaihui', 'A7beimian', 'gebibeimian', 'xiaohuiyishi', 'quqiantai', 'qiantaihuiyishi', 'zhanshiqu', 'qiantaimenkou', 'bolimenguodao', 'bolimenguodao1', 'qudengdianti', 'dianti1', 'dianti1li','dianti2', 'dianti2li','dianti3', 'dianti3li','dianti4', 'dianti4li','dianti5', 'dianti5li','dianti6', 'dianti6li', 'path01', 'door'] + [f'seat{i:02d}' for i in range(1, 17)]
 
 
 # Trajectory Directory

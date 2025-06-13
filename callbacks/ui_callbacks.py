@@ -81,7 +81,7 @@ def register_callbacks(app):
         return no_update
 
 
-    # --- 用下面这个完整的代码块替换您现有的 send_control_commands 函数 ---
+     # --- 用下面这个完整的代码块替换您现有的 send_control_commands 函数 ---
     @app.callback(
         Output("action-feedback-display", "children", allow_duplicate=True),
         [Input("send-left-arm-button", "n_clicks"),
@@ -90,37 +90,38 @@ def register_callbacks(app):
         Input("send-left-hand-button", "n_clicks"),
         Input("send-right-hand-button", "n_clicks"),
         Input("send-nav-command-button", "n_clicks"),
-        Input("send-pose-goal-button", "n_clicks")],  # 7个Inputs
+        Input("send-pose-goal-button", "n_clicks")],
         [State(f"l_arm_slider_{i}", "value") for i in range(7)] +
         [State(f"r_arm_slider_{i}", "value") for i in range(7)] +
         [State("head-tilt-slider", "value"), State("head-pan-slider", "value")] +
         [State(f"l_hand_slider_{i}", "value") for i in range(len(config.LEFT_HAND_DOF_NAMES))] +
         [State(f"r_hand_slider_{i}", "value") for i in range(len(config.RIGHT_HAND_DOF_NAMES))] +
-        [State("nav-point-dropdown", "value")] +
+        # MODIFIED: Changed State from "nav-point-dropdown" to "nav-command-input"
+        [State("nav-command-input", "value")] +
         [State("playback-speed-slider", "value")] +
         [State("pose-control-arm-select", "value"),
         State("pose-pos-x", "value"), State("pose-pos-y", "value"), State("pose-pos-z", "value"),
-        State("pose-ori-w", "value"), State("pose-ori-x", "value"), State("pose-ori-y", "value"), State("pose-ori-z", "value")], # 38个States
+        State("pose-ori-w", "value"), State("pose-ori-x", "value"), State("pose-ori-y", "value"), State("pose-ori-z", "value")],
         prevent_initial_call=True
     )
-    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav, n_pose, # 7个n_clicks参数
+    def send_control_commands(n_l_arm, n_r_arm, n_head, n_l_hand, n_r_hand, n_nav, n_pose,
                             # Arm Sliders (14)
                             l_arm_s0, l_arm_s1, l_arm_s2, l_arm_s3, l_arm_s4, l_arm_s5, l_arm_s6,
                             r_arm_s0, r_arm_s1, r_arm_s2, r_arm_s3, r_arm_s4, r_arm_s5, r_arm_s6,
                             # Head Sliders (2)
                             head_tilt_val, head_pan_val,
-                            # Hand Sliders (假设左右各6个, 共12个)
+                            # Hand Sliders (12)
                             l_hand_s0, l_hand_s1, l_hand_s2, l_hand_s3, l_hand_s4, l_hand_s5,
                             r_hand_s0, r_hand_s1, r_hand_s2, r_hand_s3, r_hand_s4, r_hand_s5,
-                            # Other controls (2)
-                            selected_nav_point,
+                            # MODIFIED: Changed parameter name to reflect its new source
+                            nav_command_string,
                             playback_speed_for_moveit,
                             # New Pose Controls (8)
                             pose_arm_select,
                             pos_x, pos_y, pos_z,
                             ori_w, ori_x, ori_y, ori_z
                             ):
-        # (函数体保持不变)
+        # (函数体大部分保持不变)
         ctx = callback_context
         button_id = ctx.triggered_id
 
@@ -213,14 +214,19 @@ def register_callbacks(app):
                     feedback_msg = "右手指令已发送!"
                 else: return html.Div("右手 Publisher 不可用。", className="alert alert-warning")
             
+            # MODIFIED: Logic for handling the navigation command from the text input
             elif button_id == "send-nav-command-button":
-                if not selected_nav_point:
-                    return html.Div("请选择一个导航目标点。", className="alert alert-warning")
+                # Check if the string is empty or just whitespace
+                if not nav_command_string or not nav_command_string.strip():
+                    return html.Div("请输入一个有效的导航指令。", className="alert alert-warning")
+                
                 if ros_handler.nav_pub:
-                    msg_data = {'data': selected_nav_point}
+                    # The message type is likely std_msgs/String, which has a 'data' field.
+                    msg_data = {'data': nav_command_string.strip()}
                     ros_handler.nav_pub.publish(roslibpy.Message(msg_data))
-                    feedback_msg = f"导航指令 '{selected_nav_point}' 已发送!"
-                else: return html.Div("导航 Publisher 不可用。", className="alert alert-warning")
+                    feedback_msg = f"导航指令 '{nav_command_string.strip()}' 已发送!"
+                else: 
+                    return html.Div("导航 Publisher 不可用。", className="alert alert-warning")
             
             return html.Div(feedback_msg, className="alert alert-success")
 
@@ -605,3 +611,16 @@ def register_callbacks(app):
         new_p_state_exec = current_p_state_exec.copy()
         new_p_state_exec['current_index'] = (current_idx + 1) % len(trajectory_to_play)
         return (new_p_state_exec, html.Div(feedback_message_exec, className="alert alert-info"), *slider_updates_exec)
+
+    # --- Navigation Preset Selection Callback ---
+    @app.callback(
+        Output("nav-command-input", "value"),
+        Input("nav-preset-dropdown", "value"),
+        State("nav-command-input", "value"),
+        prevent_initial_call=True
+    )
+    def update_nav_input_from_preset(selected_preset, current_input):
+        """Update navigation input field when user selects a preset location"""
+        if selected_preset and selected_preset.strip():
+            return selected_preset
+        return current_input or ""

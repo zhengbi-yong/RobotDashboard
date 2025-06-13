@@ -4,13 +4,10 @@ import roslibpy
 import roslibpy.actionlib
 import time
 import math
-# --- THIS IS THE KEY ---
-# Import the underlying Twisted reactor to handle shutdown correctly.
 from twisted.internet import reactor
-
+from loguru import logger
 # --- 1. Configuration ---
-# ROS_BRIDGE_HOST = '192.168.0.105' # IMPORTANT: Change this to your robot's IP address
-ROS_BRIDGE_HOST = 'wanrenai.com' # IMPORTANT: Change this to your robot's IP address
+ROS_BRIDGE_HOST = '192.168.0.105' # IMPORTANT: Change this to your robot's IP address
 ROS_BRIDGE_PORT = 9090
 MOVE_GROUP_ACTION_NAME = '/move_group'
 MOVE_GROUP_ACTION_TYPE = 'moveit_msgs/MoveGroupAction'
@@ -27,32 +24,32 @@ def _on_moveit_result(result):
     global shutdown_timer
     
     if shutdown_timer and shutdown_timer.active():
-        print("Action result received. Cancelling shutdown timer.")
+        logger.info("Action result received. Cancelling shutdown timer.")
         shutdown_timer.cancel()
         
     error_code = result['error_code']['val']
     if error_code == 1: # SUCCESS
-        print("\n[SUCCESS] MoveIt! goal completed successfully.")
+        logger.info("MoveIt! goal completed successfully.")
     else:
-        print(f"\n[FAILURE] MoveIt! goal failed with error code: {error_code}.")
-    
+        logger.error(f"MoveIt! goal failed with error code: {error_code}.")
+
     # --- FINAL FIX ---
     # Bypass the buggy roslibpy terminate() and use Twisted's standard stop method.
-    print("Requesting event loop shutdown...")
+    logger.info("Requesting event loop shutdown...")
     reactor.callFromThread(reactor.stop) # This is the thread-safe way to stop the reactor.
 
 
 def send_moveit_joint_goal(planning_group_name, joint_names, target_joint_angles_rad):
     """Constructs and sends a joint space goal to MoveIt!."""
     if not moveit_action_client or not ros_client.is_connected:
-        print("Error: MoveIt! Action Client is not available or ROS is not connected.")
+        logger.error("Error: MoveIt! Action Client is not available or ROS is not connected.")
         return
 
-    print(f"\n--- Sending MoveIt! Joint Goal ---")
-    print(f"Planning Group: {planning_group_name}")
-    print(f"Joints: {joint_names}")
-    print(f"Target (rad): {[f'{angle:.3f}' for angle in target_joint_angles_rad]}")
-    print("---------------------------------")
+    logger.info(f"\n--- Sending MoveIt! Joint Goal ---")
+    logger.info(f"Planning Group: {planning_group_name}")
+    logger.info(f"Joints: {joint_names}")
+    logger.info(f"Target (rad): {[f'{angle:.3f}' for angle in target_joint_angles_rad]}")
+    logger.info("---------------------------------")
 
     joint_constraints = [{'joint_name': name, 'position': pos, 'tolerance_above': 0.01, 'tolerance_below': 0.01, 'weight': 1.0} for name, pos in zip(joint_names, target_joint_angles_rad)]
     goal_constraints = {'name': 'joint_space_goal_constraint', 'joint_constraints': joint_constraints}
@@ -73,11 +70,11 @@ def send_moveit_joint_goal(planning_group_name, joint_names, target_joint_angles
     goal = roslibpy.actionlib.Goal(moveit_action_client, move_group_goal_message)
     goal.on('result', _on_moveit_result)
     goal.send()
-    print(f"MoveIt! goal has been sent (Goal ID: {goal.goal_id}). Waiting for result...")
+    logger.info(f"MoveIt! goal has been sent (Goal ID: {goal.goal_id}). Waiting for result...")
 
 def timeout_shutdown():
     """This function is called by the timer if no result is received in time."""
-    print("\n[TIMEOUT] No result received from MoveIt! action in time. Shutting down.")
+    logger.warning("No result received from MoveIt! action in time. Shutting down.")
     # Also use the reactor to stop on timeout.
     reactor.callFromThread(reactor.stop)
 
@@ -86,17 +83,18 @@ def perform_actions_on_ready(client):
     This is the main logic function, called after the connection is established.
     """
     global moveit_action_client, shutdown_timer
-    print("Connection to ROS Bridge successful.")
-    
+    logger.info("Connection to ROS Bridge successful.")
+    logger.info("Initializing MoveIt! Action Client...")
     try:
         moveit_action_client = roslibpy.actionlib.ActionClient(
             client, MOVE_GROUP_ACTION_NAME, MOVE_GROUP_ACTION_TYPE
         )
-        print("MoveIt! Action Client initialized.")
+        logger.info("MoveIt! Action Client initialized.")
 
         # Using the safe goal that we know works.
-        target_angles_deg = [15, -15, 0, 0, 0, 0, 0]
-        print(f"Target angles (deg): {target_angles_deg}")
+        # target_angles_deg = [15, -75, 0, 0, 0, 0, 0]
+        target_angles_deg = [15, 0, 0, 0, 0, 0, 0]
+        logger.info(f"Target angles (deg): {target_angles_deg}")
         target_angles_rad = [math.radians(deg) for deg in target_angles_deg]
 
         send_moveit_joint_goal(
@@ -106,12 +104,12 @@ def perform_actions_on_ready(client):
         )
 
         timeout_seconds = 20
-        print(f"Setting a {timeout_seconds}-second shutdown timer as a failsafe.")
+        logger.info(f"Setting a {timeout_seconds}-second shutdown timer as a failsafe.")
         # call_later is still a roslibpy function, but it just schedules our reactor call.
         shutdown_timer = client.call_later(timeout_seconds, timeout_shutdown)
 
     except Exception as e:
-        print(f"An error occurred during on-ready setup: {e}")
+        logger.error(f"An error occurred during on-ready setup: {e}")
         reactor.stop()
 
 def main():
@@ -119,21 +117,36 @@ def main():
     Main execution function. Sets up the ROS client and starts the event loop.
     """
     global ros_client
-    print("--- Robot Arm Control Script ---")
-    
+    logger.info("--- Robot Arm Control Script ---")
+    logger.info(f"Connecting to ROS Bridge at {ROS_BRIDGE_HOST}:{ROS_BRIDGE_PORT}...")
+
     ros_client = roslibpy.Ros(host=ROS_BRIDGE_HOST, port=ROS_BRIDGE_PORT)
+
     ros_client.on_ready(lambda: perform_actions_on_ready(ros_client))
     
-    print(f"Attempting to connect to {ROS_BRIDGE_HOST}:{ROS_BRIDGE_PORT}...")
-    
+    def on_error(e):
+        logger.error(f"ROS Bridge Connection Error: {e}")
+        if reactor.running:
+            reactor.stop()
+    ros_client.on('error', on_error)
+
+    # --- FIX ---
+    # The 'close' event provides one argument to its handler.
+    # We modify the lambda to accept one argument (which we ignore with '_').
+    ros_client.on('close', lambda _: logger.info("Connection to ROS Bridge has been closed."))
+
     try:
-        # run_forever() starts the Twisted reactor.
+        logger.info("Starting ROS Bridge event loop. Waiting for connection...")
         ros_client.run_forever()
     except KeyboardInterrupt:
-        print("Keyboard interrupt detected. Shutting down.")
+        logger.info("Keyboard interrupt detected. Shutting down.")
     finally:
-        # This will run after the reactor has been stopped by any of our shutdown calls.
-        print("Script finished.")
+        # This cleanup code runs after the reactor has stopped.
+        if ros_client and ros_client.is_connected:
+            # By the time we are here, the connection might already be closing due to reactor.stop()
+            # so a terminate() call might not be strictly necessary but is good practice.
+            ros_client.terminate()
+        logger.info("Script finished.")
 
 if __name__ == '__main__':
     main()

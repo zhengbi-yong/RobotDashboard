@@ -1,3 +1,5 @@
+# RobotDashboard/components/layout.py
+
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 from .. import config
@@ -88,20 +90,33 @@ def create_layout():
                 dbc.Col(html.Div(id="ros-connection-status-display", children=f"状态: 未连接", className="align-self-center text-md-left text-center p-2 border rounded bg-light"), width=12, md=8)
             ], align="center")
         ])
-    ])
-
-    # --- Navigation Control Card ---
+    ])    # --- Navigation Control Card ---
+    # Combined input and dropdown for navigation control
     nav_control_card_content = [
         dbc.CardHeader("导航控制 (Navigation Control)"),
         dbc.CardBody([
             html.Div([
-                html.Label("选择导航目标点:", className="form-label"),
+                html.Label("选择预设地点或输入自定义目标:", className="form-label"),
+                # Dropdown for predefined navigation points
                 dcc.Dropdown(
-                    id="nav-point-dropdown",
-                    options=[{'label': point, 'value': point} for point in config.PREDEFINED_NAV_POINTS],
-                    placeholder="选择一个目标点...",
+                    id="nav-preset-dropdown",
+                    options=[
+                        {"label": "选择预设地点...", "value": ""},
+                        *[{"label": point, "value": point} for point in config.PREDEFINED_NAV_POINTS]
+                    ],
+                    value="",
+                    placeholder="选择预设地点",
+                    className="mb-2"
+                ),
+                # Text input for custom navigation commands
+                dbc.Input(
+                    id="nav-command-input",
+                    type="text",
+                    placeholder="或输入自定义导航目标 (例如: 'kitchen', 'meeting_room', etc.)",
                     className="mb-3"
-                )
+                ),
+                html.Small("提示: 选择预设地点会自动填入输入框，您也可以直接在输入框中输入任意目标。", 
+                          className="text-muted")
             ]),
             html.Div(dbc.Button("发送导航指令", id="send-nav-command-button", color="primary", className="mt-2 w-100"), className="d-grid")
         ])
@@ -263,6 +278,7 @@ def create_layout():
 
         # --- Bottom Section: Navigation ---
         dbc.Row(
+            # MODIFIED: Use the updated navigation card content
             dbc.Col(dbc.Card(nav_control_card_content, className="mb-4"), width=12, lg=8),
             justify="center"
         ),

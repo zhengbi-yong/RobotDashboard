@@ -9,8 +9,8 @@ import math
 from twisted.internet import reactor
 
 # --- 1. Configuration ---
-# ROS_BRIDGE_HOST = '192.168.0.105' # IMPORTANT: Change this to your robot's IP address
-ROS_BRIDGE_HOST = 'www.wanrenai.com' # IMPORTANT: Change this to your robot's IP address
+ROS_BRIDGE_HOST = '192.168.0.105' # IMPORTANT: Change this to your robot's IP address
+# ROS_BRIDGE_HOST = 'www.wanrenai.com' # IMPORTANT: Change this to your robot's IP address
 ROS_BRIDGE_PORT = 9090
 MOVE_GROUP_ACTION_NAME = '/move_group'
 MOVE_GROUP_ACTION_TYPE = 'moveit_msgs/MoveGroupAction'

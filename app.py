@@ -35,9 +35,9 @@ if __name__ == "__main__":
             print(f"Error creating trajectory directory {config.TRAJECTORY_DIR}: {e}.")
 
     try:
-        print("Starting Dash application server on http://0.0.0.0:8051/")
+        print("Starting Dash application server on http://0.0.0.0:8050/")
         # For development: debug=True. For production, use a proper WSGI server.
-        app.run(debug=True, host='0.0.0.0', port=8051)
+        app.run(debug=True, host='0.0.0.0', port=8050)
     except KeyboardInterrupt:
         print("\nDash server stopping due to KeyboardInterrupt.")
     except Exception as e:

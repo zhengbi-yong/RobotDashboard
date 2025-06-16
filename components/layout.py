@@ -227,6 +227,45 @@ def create_layout():
             )
         ])
     ]
+    navigation_joy_card = dbc.Card(
+        [
+            dbc.CardHeader("底盘遥控"),
+            dbc.CardBody(
+                dbc.Container(
+                    [
+                        # 第一行：左前、前进、右前
+                        dbc.Row(
+                            [
+                                dbc.Col(dbc.Button("↖", id="nav-forward-left-button", color="secondary", style={"width": "100%"})),
+                                dbc.Col(dbc.Button("↑ 前进", id="nav-forward-button", color="primary", style={"width": "100%"})),
+                                dbc.Col(dbc.Button("↗", id="nav-forward-right-button", color="secondary", style={"width": "100%"})),
+                            ],
+                            className="mb-2",
+                        ),
+                        # 第二行：左转、停止、右转
+                        dbc.Row(
+                            [
+                                dbc.Col(dbc.Button("↶ 左转", id="nav-left-turn-button", color="secondary", style={"width": "100%"})),
+                                dbc.Col(dbc.Button("■ 停止", id="nav-stop-button", color="danger", style={"width": "100%"})),
+                                dbc.Col(dbc.Button("↷ 右转", id="nav-right-turn-button", color="secondary", style={"width": "100%"})),
+                            ],
+                            className="mb-2",
+                        ),
+                        # 第三行：后退
+                        dbc.Row(
+                            [
+                                dbc.Col(),
+                                dbc.Col(dbc.Button("↓ 后退", id="nav-backward-button", color="primary", style={"width": "100%"})),
+                                dbc.Col(),
+                            ]
+                        ),
+                    ],
+                    fluid=True,
+                )
+            ),
+        ],
+        className="mb-4",
+    )
 
     # --- Main Layout Definition ---
     layout = dbc.Container([
@@ -282,6 +321,11 @@ def create_layout():
         dbc.Row(
             # MODIFIED: Use the updated navigation card content
             dbc.Col(dbc.Card(nav_control_card_content, className="mb-4"), width=12, lg=8),
+            justify="center"
+        ),
+        dbc.Row(
+            # MODIFIED: Use the updated navigation card content
+            dbc.Col(dbc.Card(navigation_joy_card, className="mb-4"), width=12, lg=8),
             justify="center"
         ),
 

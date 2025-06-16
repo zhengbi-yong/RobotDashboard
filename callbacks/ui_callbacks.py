@@ -7,11 +7,21 @@ import roslibpy
 import json
 import time
 import math
-import traceback
-
+import os
+from datetime import datetime
+from loguru import logger
+import sys
 from .. import config
 from ..ros_comms import handler as ros_handler
 from ..utils import trajectory_manager as traj_manager
+
+# --- Loguru Configuration ---
+# This setup should be placed at the application's entry point.
+# It ensures that a 'log' directory exists and creates a new log file
+# for each run, named with the current date and time.
+logger.info("--- UI_CALLBACKS.PY: Logging initialized ---")
+# --- End Loguru Configuration ---
+
 
 _last_moveit_result_ui_timestamp = 0
 _last_moveit_error_code_ui = None
@@ -41,11 +51,11 @@ def register_callbacks(app):
         
         if triggered_id == "connect-ros-button" and n_clicks_connect is not None:
             if ros_handler.ros_connection_thread and ros_handler.ros_connection_thread.is_alive():
-                print("连接尝试已在进行中。")
+                logger.warning("Connection attempt already in progress.")
                 return current_status_display, True
 
             if ros_handler.ros_client and ros_handler.ros_client.is_connected:
-                print("ROS 客户端已连接。正在终止现有连接以重新连接。")
+                logger.info("ROS client is already connected. Terminating existing connection to reconnect.")
                 ros_handler.safe_terminate_ros_client()
                 time.sleep(1.0)
 
@@ -231,8 +241,8 @@ def register_callbacks(app):
             return html.Div(feedback_msg, className="alert alert-success")
 
         except Exception as e:
-            print(f"发送指令时出错 ({button_id}): {e}")
-            traceback.print_exc()
+            # Replaced print and traceback with logger.exception
+            logger.exception(f"Error sending command (Button ID: {button_id}): {e}")
             return html.Div(f"发送指令错误: {e}", className="alert alert-danger")
 
     # 这是修复后的正确代码，请用它替换上面的旧函数
@@ -329,7 +339,7 @@ def register_callbacks(app):
         if isinstance(ctx.triggered_id, dict) and ctx.triggered_id.get("type") == 'delete-trajectory-point-button':
             point_index_to_delete = ctx.triggered_id['index']
         else:
-            print(f"Warning: handle_delete_trajectory_point triggered by unexpected id: {ctx.triggered_id}")
+            logger.warning(f"handle_delete_trajectory_point triggered by unexpected id: {ctx.triggered_id}")
             return no_update, no_update, no_update, no_update
 
         feedback_msg, feedback_type = traj_manager.delete_position_from_trajectory(point_index_to_delete)
@@ -423,7 +433,7 @@ def register_callbacks(app):
         if not current_trajectory:
             return html.Div("活跃轨迹中无位置点可回放。", className="alert alert-warning")
 
-        print(f"开始单次回放 {len(current_trajectory)} 个位置点...")
+        logger.info(f"Starting single replay of {len(current_trajectory)} trajectory points...")
         feedback_msgs = []
         try:
             for i, pos_data in enumerate(current_trajectory):
@@ -447,7 +457,7 @@ def register_callbacks(app):
                         feedback_msgs.append(f"点 {i+1}: 已发送 MoveIt! 手臂目标。")
                         ros_handler.reset_latest_moveit_result()
                     except Exception as e:
-                        print(f"Error sending MoveIt! goal during replay (point {i+1}): {e}")
+                        logger.error(f"Error sending MoveIt! goal during replay (point {i+1}): {e}")
                         feedback_msgs.append(f"点 {i+1}: 发送 MoveIt! 目标失败: {e}")
                 else:
                     feedback_msgs.append(f"点 {i+1}: MoveIt! Action Client 未就绪，无法回放手臂。")
@@ -480,10 +490,10 @@ def register_callbacks(app):
 
                 time.sleep(max(0.1, point_delay_sec))
             
-            print("单次回放完成。")
+            logger.info("Single replay completed.")
             return html.Div([html.P("单次回放完成。"), html.Ul([html.Li(msg) for msg in feedback_msgs])], className="alert alert-success")
         except Exception as e:
-            print(f"回放过程中发生错误: {e}")
+            logger.exception(f"An error occurred during replay process: {e}")
             return html.Div(f"回放错误: {e}", className="alert alert-danger")
 
     @app.callback(
@@ -605,7 +615,7 @@ def register_callbacks(app):
                 ros_handler.right_hand_pub.publish(roslibpy.Message({'hand_angle': right_hand_targets_int_exec}))
 
         except Exception as e:
-            print(f"Error during continuous playback step {current_idx + 1}: {e}")
+            logger.error(f"Error during continuous playback step {current_idx + 1}: {e}")
             feedback_message_exec = f"连续回放错误在点 {current_idx + 1}: {e}"
         
         new_p_state_exec = current_p_state_exec.copy()
@@ -677,3 +687,63 @@ def register_callbacks(app):
         except Exception as e:
             feedback_msg = html.Div(f"双臂归位时发生错误: {str(e)}", className="alert alert-danger")
             return feedback_msg, *([no_update] * 14)
+
+            
+    # --- NEW: Joystick-style Navigation Callback ---
+    @app.callback(
+        Output("action-feedback-display", "children", allow_duplicate=True),
+        [
+            Input("nav-forward-button", "n_clicks"),
+            Input("nav-backward-button", "n_clicks"),
+            Input("nav-left-turn-button", "n_clicks"),
+            Input("nav-right-turn-button", "n_clicks"),
+            Input("nav-forward-left-button", "n_clicks"),
+            Input("nav-forward-right-button", "n_clicks"),
+            Input("nav-stop-button", "n_clicks"),
+        ],
+        prevent_initial_call=True,
+    )
+    def handle_joy_navigation(n_fwd, n_bwd, n_left, n_right, n_fwd_l, n_fwd_r, n_stop):
+        """Handles single-click joystick-like navigation commands."""
+        
+        ctx = callback_context
+        if not ctx.triggered_id:
+            return no_update
+
+        if not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done):
+            return html.Div("ROS 未连接或未完成设置，无法发送导航指令。", className="alert alert-danger")
+
+        # 从 config 文件获取速度常量
+        lin_vel = config.NAV_LINEAR_SPEED
+        ang_vel = config.NAV_ANGULAR_SPEED
+
+        # 定义每个按钮对应的速度
+        velocities = {
+            "nav-forward-button":        (lin_vel, 0.0),
+            "nav-backward-button":       (-lin_vel, 0.0),
+            "nav-left-turn-button":      (0.0, ang_vel),
+            "nav-right-turn-button":     (0.0, -ang_vel),
+            "nav-forward-left-button":   (lin_vel, ang_vel), # 前进并左转
+            "nav-forward-right-button":  (lin_vel, -ang_vel), # 前进并右转
+            "nav-stop-button":           (0.0, 0.0),
+        }
+
+        target_velocities = velocities.get(ctx.triggered_id)
+
+        if target_velocities is None:
+            return no_update
+
+        # 调用 handler 中的新函数发送指令
+        success = ros_handler.send_nav_joy_command(
+            linear_vel=target_velocities[0],
+            angular_vel=target_velocities[1]
+        )
+        
+        button_name = ctx.triggered_id.replace('-button', '').replace('nav-', '')
+        
+        if success:
+            feedback_msg = f"指令 '{button_name}' 已发送 (线速度: {target_velocities[0]}, 角速度: {target_velocities[1]})"
+            return html.Div(feedback_msg, className="alert alert-success")
+        else:
+            feedback_msg = f"发送指令 '{button_name}' 失败。请检查ROS连接和日志。"
+            return html.Div(feedback_msg, className="alert alert-danger")

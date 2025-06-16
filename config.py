@@ -5,9 +5,9 @@ import os
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ROS Configuration
-# ROS_BRIDGE_HOST = '192.168.0.105' # CHANGE THIS IF NEEDED
+ROS_BRIDGE_HOST = '192.168.0.105' # CHANGE THIS IF NEEDED
 # ROS_BRIDGE_HOST = 'www.wanrenai.com' # CHANGE THIS IF NEEDED
-ROS_BRIDGE_HOST = '127.0.0.1' # CHANGE THIS IF NEEDED
+# ROS_BRIDGE_HOST = '127.0.0.1' # CHANGE THIS IF NEEDED
 ROS_BRIDGE_PORT = 9090
 
 # --- ARM ---
@@ -85,3 +85,14 @@ END_EFFECTOR_LINKS = {
     PLANNING_GROUP_LEFT_ARM: "l_hand_base_link",
     PLANNING_GROUP_RIGHT_ARM: "r_hand_base_link"
 }
+
+# --- Joystick-style Navigation Control ---
+# This is for sending continuous velocity commands, different from preset navigation goals.
+NAV_JOY_CONTROL_TOPIC = '/navigation_joy_control'
+# NOTE: The message type from your example is 'agv_ros/NavigationJoyControl'.
+# Please ensure this matches the package name in your ROS environment.
+NAV_JOY_CONTROL_MSG_TYPE = 'agv_ros/NavigationJoyControl' 
+
+# --- Navigation Speed Constants ---
+NAV_LINEAR_SPEED = 0.3      # Linear velocity in m/s
+NAV_ANGULAR_SPEED = 0.5     # Angular velocity in rad/s

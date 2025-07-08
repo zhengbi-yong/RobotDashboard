@@ -4,6 +4,41 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 from .. import config
 
+def create_action_buttons():
+    """创建按类别分组的动作按钮"""
+    # 按类别分组
+    categories = {}
+    for action in config.ROBOT_ACTIONS:
+        category = action['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(action)
+    
+    # 创建每个类别的按钮组
+    category_components = []
+    for category, actions in categories.items():
+        buttons = []
+        for action in actions:
+            buttons.append(
+                dbc.Button(
+                    action['name'],
+                    id=f"action-{action['id']}",
+                    color="primary",
+                    outline=True,
+                    size="sm",
+                    className="me-2 mb-2"
+                )
+            )
+        
+        category_components.append(
+            html.Div([
+                html.H6(f"{category}动作", className="mb-2 text-muted"),
+                html.Div(buttons, className="mb-3")
+            ])
+        )
+    
+    return category_components
+
 def create_layout():
     # --- Left Arm Control Card ---
     left_arm_card_content = [
@@ -267,6 +302,52 @@ def create_layout():
         className="mb-4",
     )
 
+    # --- NEW: Robot Action Control Card ---
+    robot_action_card_content = [
+        dbc.CardHeader("机器人动作控制 (Robot Actions)"),
+        dbc.CardBody([
+            # 语音控制区域
+            dbc.Row([
+                dbc.Col([
+                    html.H6("语音控制", className="mb-3"),
+                    html.Div([
+                        dbc.InputGroup([
+                            dbc.Input(
+                                id="asr-transcript-input",
+                                placeholder="输入要替换的语音识别文本...",
+                                value="小千提醒你们该吃午饭了"
+                            ),
+                            dbc.Button("设置语音识别", id="set-asr-button", color="info")
+                        ], className="mb-2")
+                    ]),
+                    html.Div([
+                        dbc.InputGroup([
+                            dbc.Input(
+                                id="speak-text-input",
+                                placeholder="输入要说的话...",
+                                value="小千提醒你们该吃午饭了"
+                            ),
+                            dbc.Button("直接说话", id="speak-button", color="success")
+                        ])
+                    ])
+                ], width=12)
+            ], className="mb-4"),
+            
+            html.Hr(),
+            
+            # 动作控制区域
+            html.H6("预设动作", className="mb-3"),
+            
+            # 按类别分组的动作按钮
+            html.Div(create_action_buttons()),
+            
+            html.Hr(className="mt-4"),
+            
+            # 反馈显示区域
+            html.Div(id="robot-action-feedback")
+        ])
+    ]
+
     # --- Main Layout Definition ---
     layout = dbc.Container([
         # Hidden stores and intervals
@@ -313,7 +394,15 @@ def create_layout():
                 dbc.Card(right_hand_card_content, className="mb-4"),
                 dbc.Card(right_arm_states_card_content, className="mb-4")
             ], width=12, lg=3),
-        ]),
+        ], justify="start"),
+
+        html.Hr(className="my-4"),
+
+        # --- Robot Action Section ---
+        dbc.Row(
+            dbc.Col(dbc.Card(robot_action_card_content, className="mb-4"), width=12),
+            justify="center"
+        ),
 
         html.Hr(className="my-4"),
 

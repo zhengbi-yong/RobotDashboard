@@ -32,6 +32,16 @@ left_hand_pub = None
 right_hand_pub = None
 # Navigation publisher
 nav_pub = None
+# Direct joint control publishers (NEW)
+left_arm_pub = None
+right_arm_pub = None
+
+# 直接控制状态追踪 (NEW)
+_last_direct_command_time = {'left': 0, 'right': 0}
+_direct_command_min_interval = 0.1  # 最小指令间隔（秒）
+
+# 角度单位配置 (NEW)
+_use_radians_for_joint_commands = None  # None表示使用配置文件设置
 
 # Subscribers
 left_arm_sub = None
@@ -75,38 +85,81 @@ def start_ros_subscriber_thread_internal():
     logger.info("[Subscriber Thread] Client connected. Attempting to set up ROS subscriptions now.")
 
     try:
-        logger.info(f"[Subscriber Thread] Trying to subscribe to left arm topic: '{config.LEFT_ARM_STATE_TOPIC}' (type: '{config.ARM_STATE_MSG_TYPE}')")
-        left_arm_sub = roslibpy.Topic(ros_client, config.LEFT_ARM_STATE_TOPIC, config.ARM_STATE_MSG_TYPE)
-        # Use the imported ros_message_callbacks directly
-        left_arm_sub.subscribe(lambda msg: ros_message_callbacks.left_arm_state_callback(msg, latest_joint_states))
-        logger.info(f"[Subscriber Thread] Initiated subscription for left arm topic. Waiting for handshake...")
-
-        logger.info(f"[Subscriber Thread] Trying to subscribe to right arm topic: '{config.RIGHT_ARM_STATE_TOPIC}' (type: '{config.ARM_STATE_MSG_TYPE}')")
-        right_arm_sub = roslibpy.Topic(ros_client, config.RIGHT_ARM_STATE_TOPIC, config.ARM_STATE_MSG_TYPE)
-        right_arm_sub.subscribe(lambda msg: ros_message_callbacks.right_arm_state_callback(msg, latest_joint_states))
-        logger.info(f"[Subscriber Thread] Initiated subscription for right arm topic. Waiting for handshake...")
-
-        logger.info(f"[Subscriber Thread] Trying to subscribe to head servo topic: '{config.HEAD_SERVO_STATE_TOPIC}' (type: '{config.HEAD_SERVO_STATE_MSG_TYPE}')")
-        head_servo_sub = roslibpy.Topic(ros_client, config.HEAD_SERVO_STATE_TOPIC, config.HEAD_SERVO_STATE_MSG_TYPE)
-        head_servo_sub.subscribe(lambda msg: ros_message_callbacks.head_servo_state_callback(msg, latest_joint_states))
-        logger.info(f"[Subscriber Thread] Initiated subscription for head servo topic. Waiting for handshake...")
+        # 尝试订阅各个话题，即使部分失败也继续
+        subscriptions_attempted = []
+        subscriptions_successful = []
         
-        time.sleep(1.0)
+        # 左臂状态话题
+        try:
+            logger.info(f"[Subscriber Thread] Trying to subscribe to left arm topic: '{config.LEFT_ARM_STATE_TOPIC}' (type: '{config.ARM_STATE_MSG_TYPE}')")
+            left_arm_sub = roslibpy.Topic(ros_client, config.LEFT_ARM_STATE_TOPIC, config.ARM_STATE_MSG_TYPE)
+            left_arm_sub.subscribe(lambda msg: ros_message_callbacks.left_arm_state_callback(msg, latest_joint_states))
+            subscriptions_attempted.append("left_arm")
+            logger.info(f"[Subscriber Thread] Left arm subscription initiated")
+        except Exception as e:
+            logger.warning(f"[Subscriber Thread] Failed to subscribe to left arm topic: {e}")
+            left_arm_sub = None
 
-        left_arm_sub_ok = left_arm_sub.is_subscribed
-        right_arm_sub_ok = right_arm_sub.is_subscribed
-        head_servo_sub_ok = head_servo_sub.is_subscribed
+        # 右臂状态话题  
+        try:
+            logger.info(f"[Subscriber Thread] Trying to subscribe to right arm topic: '{config.RIGHT_ARM_STATE_TOPIC}' (type: '{config.ARM_STATE_MSG_TYPE}')")
+            right_arm_sub = roslibpy.Topic(ros_client, config.RIGHT_ARM_STATE_TOPIC, config.ARM_STATE_MSG_TYPE)
+            right_arm_sub.subscribe(lambda msg: ros_message_callbacks.right_arm_state_callback(msg, latest_joint_states))
+            subscriptions_attempted.append("right_arm")
+            logger.info(f"[Subscriber Thread] Right arm subscription initiated")
+        except Exception as e:
+            logger.warning(f"[Subscriber Thread] Failed to subscribe to right arm topic: {e}")
+            right_arm_sub = None
 
-        if left_arm_sub_ok and right_arm_sub_ok and head_servo_sub_ok:
-            logger.info("[Subscriber Thread] All subscriptions established successfully (is_subscribed: True). Setting ros_setup_done to True.")
+        # 头部伺服话题
+        try:
+            logger.info(f"[Subscriber Thread] Trying to subscribe to head servo topic: '{config.HEAD_SERVO_STATE_TOPIC}' (type: '{config.HEAD_SERVO_STATE_MSG_TYPE}')")
+            head_servo_sub = roslibpy.Topic(ros_client, config.HEAD_SERVO_STATE_TOPIC, config.HEAD_SERVO_STATE_MSG_TYPE)
+            head_servo_sub.subscribe(lambda msg: ros_message_callbacks.head_servo_state_callback(msg, latest_joint_states))
+            subscriptions_attempted.append("head_servo")
+            logger.info(f"[Subscriber Thread] Head servo subscription initiated")
+        except Exception as e:
+            logger.warning(f"[Subscriber Thread] Failed to subscribe to head servo topic: {e}")
+            head_servo_sub = None
+        
+        # 等待订阅确认
+        time.sleep(2.0)  # 增加等待时间
+
+        # 检查订阅状态
+        left_arm_sub_ok = left_arm_sub and left_arm_sub.is_subscribed
+        right_arm_sub_ok = right_arm_sub and right_arm_sub.is_subscribed  
+        head_servo_sub_ok = head_servo_sub and head_servo_sub.is_subscribed
+
+        if left_arm_sub_ok:
+            subscriptions_successful.append("left_arm")
+        if right_arm_sub_ok:
+            subscriptions_successful.append("right_arm")
+        if head_servo_sub_ok:
+            subscriptions_successful.append("head_servo")
+
+        logger.info(f"[Subscriber Thread] Subscription results:")
+        logger.info(f"  - Attempted: {subscriptions_attempted}")
+        logger.info(f"  - Successful: {subscriptions_successful}")
+
+        # 只要有任何一个订阅成功，或者连接正常，就允许系统工作
+        # 这样即使某些传感器话题不可用，控制功能仍然可以使用
+        if len(subscriptions_successful) > 0 or ros_client.is_connected:
+            logger.info("[Subscriber Thread] At least one subscription successful or ROS connection is stable. Setting ros_setup_done to True.")
             current_thread_subscriptions_ok = True
             ros_setup_done = True
         else:
-            logger.warning("[Subscriber Thread] Not all subscriptions reported as 'is_subscribed: True'. Check ROS environment.")
-            if not left_arm_sub_ok: logger.warning(f"  - {config.LEFT_ARM_STATE_TOPIC} (is_subscribed: False). Is this topic published? Is type correct?")
-            if not right_arm_sub_ok: logger.warning(f"  - {config.RIGHT_ARM_STATE_TOPIC} (is_subscribed: False). Is this topic published? Is type correct?")
-            if not head_servo_sub_ok: logger.warning(f"  - {config.HEAD_SERVO_STATE_TOPIC} (is_subscribed: False). Is this topic published? Is type correct?")
-            logger.warning("[Subscriber Thread] Keeping ros_setup_done as False due to failed subscriptions.")
+            logger.warning("[Subscriber Thread] No subscriptions successful. Will still allow basic control functions.")
+            # 即使订阅全部失败，也允许基本控制功能
+            ros_setup_done = True
+            current_thread_subscriptions_ok = True
+
+        # 详细的订阅状态报告
+        if not left_arm_sub_ok: 
+            logger.warning(f"  - {config.LEFT_ARM_STATE_TOPIC} subscription failed. Joint state monitoring for left arm unavailable.")
+        if not right_arm_sub_ok: 
+            logger.warning(f"  - {config.RIGHT_ARM_STATE_TOPIC} subscription failed. Joint state monitoring for right arm unavailable.")
+        if not head_servo_sub_ok: 
+            logger.warning(f"  - {config.HEAD_SERVO_STATE_TOPIC} subscription failed. Head servo state monitoring unavailable.")
 
         while ros_client and ros_client.is_connected and current_thread_subscriptions_ok:
             time.sleep(1)
@@ -138,6 +191,7 @@ def start_ros_subscriber_thread_internal():
 def _ros_connect_thread_target():
     global ros_client, ros_connection_status, ros_setup_done, subscriber_thread
     global head_servo_pub, left_hand_pub, right_hand_pub, nav_pub
+    global left_arm_pub, right_arm_pub  # 添加手臂发布器
     global moveit_action_client
     global nav_joy_pub
     local_ros_client = None
@@ -163,13 +217,17 @@ def _ros_connect_thread_target():
             moveit_action_client.on('status', _on_moveit_status)
             logger.info(f"[Connect Thread] MoveIt! Action Client initialized for '{config.MOVE_GROUP_ACTION_NAME}'.")
         except Exception as e:
-            logger.error(f"[Connect Thread] Error initializing MoveIt! Action Client: {e}")
-            raise
+            logger.warning(f"[Connect Thread] MoveIt! Action Client initialization failed: {e}")
+            logger.warning("[Connect Thread] MoveIt! features will be unavailable, but direct control will still work.")
+            moveit_action_client = None
 
         head_servo_pub = roslibpy.Topic(ros_client, config.HEAD_SERVO_CMD_TOPIC, config.HEAD_SERVO_MSG_TYPE)
         left_hand_pub = roslibpy.Topic(ros_client, config.LEFT_HAND_CMD_TOPIC, config.HAND_MSG_TYPE)
         right_hand_pub = roslibpy.Topic(ros_client, config.RIGHT_HAND_CMD_TOPIC, config.HAND_MSG_TYPE)
         nav_pub = roslibpy.Topic(ros_client, config.NAV_CMD_TOPIC, config.NAV_MSG_TYPE)
+        # --- 直接关节控制发布器 (NEW) ---
+        left_arm_pub = roslibpy.Topic(ros_client, config.LEFT_ARM_CMD_TOPIC, config.ARM_MSG_TYPE)
+        right_arm_pub = roslibpy.Topic(ros_client, config.RIGHT_ARM_CMD_TOPIC, config.ARM_MSG_TYPE)
         # --- 新增代码 ---
         nav_joy_pub = roslibpy.Topic(ros_client, config.NAV_JOY_CONTROL_TOPIC, config.NAV_JOY_CONTROL_MSG_TYPE)
         # --- 结束新增 ---
@@ -211,9 +269,9 @@ def _ros_connect_thread_target():
                 except: pass
             ros_client = None
         ros_setup_done = False
-        head_servo_pub = left_hand_pub = right_hand_pub = nav_pub = None
+        head_servo_pub = left_hand_pub = right_hand_pub = nav_pub = nav_joy_pub = None
+        left_arm_pub = right_arm_pub = None  # 添加手臂发布器清理
         moveit_action_client = None
-        nav_joy_pub = None
         logger.info("[Connect Thread] Connection attempt thread finished.")
 
 
@@ -233,12 +291,14 @@ def try_connect_ros():
 
 def safe_terminate_ros_client():
     global ros_client, ros_setup_done
-    global head_servo_pub, left_hand_pub, right_hand_pub, nav_pub
+    global head_servo_pub, left_hand_pub, right_hand_pub, nav_pub, nav_joy_pub
+    global left_arm_pub, right_arm_pub  # 添加手臂发布器
     global left_arm_sub, right_arm_sub, head_servo_sub, ros_connection_status
     global moveit_action_client
 
     ros_setup_done = False
-    head_servo_pub = left_hand_pub = right_hand_pub = nav_pub = None
+    head_servo_pub = left_hand_pub = right_hand_pub = nav_pub = nav_joy_pub = None
+    left_arm_pub = right_arm_pub = None  # 添加手臂发布器清理
 
     if moveit_action_client:
         try:
@@ -413,7 +473,6 @@ def get_latest_moveit_result():
         'timestamp': _last_moveit_result_timestamp
     }
 
-# Reset the latest MoveIt! result
 def reset_latest_moveit_result():
     global _last_moveit_error_code, _last_moveit_result_timestamp
     _last_moveit_error_code = None
@@ -511,3 +570,237 @@ def send_nav_joy_command(linear_vel, angular_vel):
     except Exception as e:
         logger.exception(f"Failed to publish Navigation Joy Command: {e}")
         return False
+
+# --- DIRECT JOINT CONTROL FUNCTIONS (NEW) ---
+def send_direct_joint_command(arm_side, target_joint_angles_deg, speed=None, trajectory_connect=None, use_radians=None):
+    """
+    发送直接关节角控制指令
+    
+    Args:
+        arm_side: 'left' 或 'right'
+        target_joint_angles_deg: 目标关节角列表（度）
+        speed: 运动速度 (0.0-1.0)，默认使用配置值
+        trajectory_connect: 轨迹连接标志，None时使用配置值
+        use_radians: 是否转换为弧度发送，None时使用全局配置
+    
+    Returns:
+        bool: 是否成功发送指令
+    """
+    global left_arm_pub, right_arm_pub, _last_direct_command_time, _use_radians_for_joint_commands
+    import time
+    import math
+    
+    # 检查指令间隔
+    current_time = time.time()
+    last_time = _last_direct_command_time.get(arm_side, 0)
+    time_diff = current_time - last_time
+    
+    if time_diff < _direct_command_min_interval:
+        sleep_time = _direct_command_min_interval - time_diff
+        logger.debug(f"Direct command too frequent for {arm_side} arm, waiting {sleep_time:.3f}s...")
+        time.sleep(sleep_time)
+        current_time = time.time()
+    
+    if speed is None:
+        speed = config.JOINT_CONTROL_SPEED
+    
+    if trajectory_connect is None:
+        trajectory_connect = config.JOINT_CONTROL_TRAJECTORY_CONNECT
+    
+    if use_radians is None:
+        if _use_radians_for_joint_commands is None:
+            # 使用配置文件设置
+            use_radians = (config.JOINT_ANGLE_UNIT.lower() == 'radians')
+        else:
+            use_radians = _use_radians_for_joint_commands
+    
+    # 选择对应的发布器
+    if arm_side == 'left':
+        pub = left_arm_pub
+        topic_name = config.LEFT_ARM_CMD_TOPIC
+    elif arm_side == 'right':
+        pub = right_arm_pub
+        topic_name = config.RIGHT_ARM_CMD_TOPIC
+    else:
+        logger.error(f"Invalid arm_side: {arm_side}. Must be 'left' or 'right'.")
+        return False
+    
+    if not pub or not ros_client or not ros_client.is_connected:
+        logger.warning(f"Direct joint control publisher for {arm_side} arm is not ready. Cannot send command.")
+        return False
+    
+    # 确保角度数量正确
+    if len(target_joint_angles_deg) != 7:
+        logger.error(f"Expected 7 joint angles, got {len(target_joint_angles_deg)}")
+        return False
+    
+    # 角度单位转换
+    if use_radians:
+        joint_values = [math.radians(deg) for deg in target_joint_angles_deg]
+        unit_info = "radians"
+    else:
+        joint_values = [float(angle) for angle in target_joint_angles_deg]
+        unit_info = "degrees"
+    
+    # 构建消息
+    message = roslibpy.Message({
+        'joint': joint_values,
+        'speed': float(speed),
+        'trajectory_connect': int(trajectory_connect)
+    })
+    
+    try:
+        pub.publish(message)
+        _last_direct_command_time[arm_side] = current_time  # 更新最后指令时间
+        logger.info(f"Published direct joint command to {arm_side} arm ({topic_name}): "
+                   f"joints={[f'{angle:.2f}' for angle in target_joint_angles_deg]}° ({unit_info}), "
+                   f"speed={speed}, trajectory_connect={trajectory_connect}")
+        return True
+    except Exception as e:
+        logger.exception(f"Failed to publish direct joint command to {arm_side} arm: {e}")
+        return False
+
+def send_left_arm_direct_command(target_joint_angles_deg, speed=None):
+    """发送左臂直接关节角控制指令"""
+    return send_direct_joint_command('left', target_joint_angles_deg, speed)
+
+def send_right_arm_direct_command(target_joint_angles_deg, speed=None):
+    """发送右臂直接关节角控制指令"""
+    return send_direct_joint_command('right', target_joint_angles_deg, speed)
+
+# --- 新增：特殊控制模式函数 ---
+def send_direct_joint_command_with_mode(arm_side, target_joint_angles_deg, mode='normal', speed=None):
+    """
+    发送直接关节角控制指令（带模式选择）
+    
+    Args:
+        arm_side: 'left' 或 'right'
+        target_joint_angles_deg: 目标关节角列表（度）
+        mode: 控制模式
+            - 'normal': 正常模式（使用配置的trajectory_connect）
+            - 'independent': 独立指令模式（trajectory_connect=0）
+            - 'continuous': 连续轨迹模式（trajectory_connect=1）
+        speed: 运动速度
+    
+    Returns:
+        bool: 是否成功发送指令
+    """
+    if mode == 'independent':
+        trajectory_connect = 0
+    elif mode == 'continuous':
+        trajectory_connect = 1
+    else:  # normal
+        trajectory_connect = None  # 使用配置值
+    
+    return send_direct_joint_command(arm_side, target_joint_angles_deg, speed, trajectory_connect)
+
+def reset_direct_command_timer(arm_side=None):
+    """重置直接控制指令时间（用于调试）"""
+    global _last_direct_command_time
+    if arm_side:
+        _last_direct_command_time[arm_side] = 0
+        logger.info(f"Reset direct command timer for {arm_side} arm")
+    else:
+        _last_direct_command_time = {'left': 0, 'right': 0}
+        logger.info("Reset direct command timer for both arms")
+
+def set_joint_angle_unit(use_radians=True):
+    """设置关节角度单位"""
+    global _use_radians_for_joint_commands
+    _use_radians_for_joint_commands = use_radians
+    unit = "radians" if use_radians else "degrees"
+    logger.info(f"Joint angle unit set to: {unit}")
+
+def get_joint_angle_unit():
+    """获取当前关节角度单位设置"""
+    global _use_radians_for_joint_commands
+    return "radians" if _use_radians_for_joint_commands else "degrees"
+
+def send_joint_command_with_unit_test(arm_side, target_joint_angles_deg, test_both_units=False):
+    """
+    测试用函数：发送关节指令并测试不同单位
+    
+    Args:
+        arm_side: 'left' 或 'right'
+        target_joint_angles_deg: 目标关节角列表（度）
+        test_both_units: 是否测试两种单位
+    """
+    if not test_both_units:
+        return send_direct_joint_command(arm_side, target_joint_angles_deg)
+    
+    logger.info(f"Testing both units for {arm_side} arm with angles: {target_joint_angles_deg}")
+    
+    # 测试度数
+    logger.info("Testing with degrees...")
+    result1 = send_direct_joint_command(arm_side, target_joint_angles_deg, use_radians=False)
+    
+    import time
+    time.sleep(3)  # 等待
+    
+    # 测试弧度
+    logger.info("Testing with radians...")
+    result2 = send_direct_joint_command(arm_side, target_joint_angles_deg, use_radians=True)
+    
+    logger.info(f"Results - Degrees: {result1}, Radians: {result2}")
+    return result1 or result2
+
+# --- ROBOT ACTION HTTP CLIENT FUNCTIONS (NEW) ---
+def send_robot_action_request(endpoint, data):
+    """
+    发送机器人动作HTTP请求
+    
+    Args:
+        endpoint: API端点（如 'speak', 'force_command'）
+        data: 请求数据
+    
+    Returns:
+        bool: 是否成功发送
+    """
+    import requests
+    import json
+    
+    try:
+        url = f"{config.ROBOT_ACTION_API_BASE_URL}{config.ROBOT_ACTION_ENDPOINTS[endpoint]}"
+        headers = {'Content-Type': 'application/json'}
+        
+        logger.info(f"Sending robot action request to: {url}")
+        logger.info(f"Request data: {data}")
+        
+        response = requests.post(url, headers=headers, json=data, timeout=5)
+        
+        if response.status_code == 200:
+            logger.info(f"Robot action request successful: {endpoint}")
+            return True
+        else:
+            logger.warning(f"Robot action request failed: {endpoint}, status: {response.status_code}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Robot action request error: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error in robot action request: {e}")
+        return False
+
+def send_asr_transcript(transcript_text):
+    """发送语音识别文本设置请求"""
+    data = {
+        "vad_state": "end",
+        "transcript": transcript_text
+    }
+    return send_robot_action_request('set_manual_asr_result', data)
+
+def send_speak_command(text):
+    """发送直接说话指令"""
+    data = {
+        "text": text
+    }
+    return send_robot_action_request('speak', data)
+
+def send_force_action_command(action_id):
+    """发送强制动作指令"""
+    data = {
+        "force_command_str": action_id,
+        "is_force_input": True
+    }
+    return send_robot_action_request('force_command', data)

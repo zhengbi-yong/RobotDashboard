@@ -148,10 +148,18 @@ def register_callbacks(app):
 
         feedback_msg = "未知错误"
         try:
-            if not (ros_handler.ros_client and ros_handler.ros_client.is_connected and ros_handler.ros_setup_done) and button_id != "connect-ros-button":
-                return html.Div("ROS 未连接或设置未完成。无法发送指令。", className="alert alert-danger")
+            # 修改连接检查：对于头部、手部等直接发布的指令，只需要ROS连接即可
+            if not (ros_handler.ros_client and ros_handler.ros_client.is_connected) and button_id != "connect-ros-button":
+                return html.Div("ROS 未连接。无法发送指令。", className="alert alert-danger")
+            
+            # 对于需要订阅器状态的指令，检查ros_setup_done
+            requires_full_setup = ["send-left-arm-button", "send-right-arm-button", "send-pose-goal-button"]
+            if button_id in requires_full_setup and not ros_handler.ros_setup_done:
+                logger.warning(f"ros_setup_done is False, but allowing control commands anyway. Some monitoring features may be unavailable.")
+                # 不再阻止操作，只是记录警告
 
             if button_id == "send-left-arm-button":
+                # 优先使用MoveIt!，不可用时使用直接控制
                 if ros_handler.moveit_action_client:
                     target_joint_angles_rad = [math.radians(deg) for deg in left_arm_angles_deg]
                     ros_handler.send_moveit_joint_goal(
@@ -162,8 +170,16 @@ def register_callbacks(app):
                     )
                     feedback_msg = "左臂 MoveIt! 目标已发送！等待规划和执行结果..."
                     ros_handler.reset_latest_moveit_result()
-                else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
+                else:
+                    # MoveIt!不可用，使用直接控制
+                    success = ros_handler.send_left_arm_direct_command(left_arm_angles_deg)
+                    if success:
+                        feedback_msg = f"左臂直接控制指令已发送！目标角度: {[f'{angle:.1f}°' for angle in left_arm_angles_deg]}"
+                    else:
+                        return html.Div("左臂控制指令发送失败。请检查ROS连接。", className="alert alert-danger")
+                        
             elif button_id == "send-right-arm-button":
+                # 优先使用MoveIt!，不可用时使用直接控制
                 if ros_handler.moveit_action_client:
                     target_joint_angles_rad = [math.radians(deg) for deg in right_arm_angles_deg]
                     ros_handler.send_moveit_joint_goal(
@@ -174,7 +190,13 @@ def register_callbacks(app):
                     )
                     feedback_msg = "右臂 MoveIt! 目标已发送！等待规划和执行结果..."
                     ros_handler.reset_latest_moveit_result()
-                else: return html.Div("MoveIt! Action Client 不可用。", className="alert alert-warning")
+                else:
+                    # MoveIt!不可用，使用直接控制
+                    success = ros_handler.send_right_arm_direct_command(right_arm_angles_deg)
+                    if success:
+                        feedback_msg = f"右臂直接控制指令已发送！目标角度: {[f'{angle:.1f}°' for angle in right_arm_angles_deg]}"
+                    else:
+                        return html.Div("右臂控制指令发送失败。请检查ROS连接。", className="alert alert-danger")
             
             elif button_id == "send-pose-goal-button":
                 if any(v is None for v in [pos_x, pos_y, pos_z, ori_w, ori_x, ori_y, ori_z]):
@@ -747,3 +769,68 @@ def register_callbacks(app):
         else:
             feedback_msg = f"发送指令 '{button_name}' 失败。请检查ROS连接和日志。"
             return html.Div(feedback_msg, className="alert alert-danger")
+
+    # --- Robot Action Callbacks (NEW) ---
+    @app.callback(
+        Output("robot-action-feedback", "children", allow_duplicate=True),
+        Input("set-asr-button", "n_clicks"),
+        State("asr-transcript-input", "value"),
+        prevent_initial_call=True
+    )
+    def handle_asr_command(n_clicks, transcript_text):
+        if n_clicks and transcript_text:
+            success = ros_handler.send_asr_transcript(transcript_text)
+            if success:
+                return html.Div(f"已设置语音识别文本: {transcript_text}", className="alert alert-success")
+            else:
+                return html.Div("语音识别文本设置失败", className="alert alert-danger")
+        return no_update
+    
+    @app.callback(
+        Output("robot-action-feedback", "children", allow_duplicate=True),
+        Input("speak-button", "n_clicks"),
+        State("speak-text-input", "value"),
+        prevent_initial_call=True
+    )
+    def handle_speak_command(n_clicks, speak_text):
+        if n_clicks and speak_text:
+            success = ros_handler.send_speak_command(speak_text)
+            if success:
+                return html.Div(f"已发送说话指令: {speak_text}", className="alert alert-success")
+            else:
+                return html.Div("说话指令发送失败", className="alert alert-danger")
+        return no_update
+    
+    # 为所有动作按钮创建回调
+    action_button_ids = [f"action-{action['id']}" for action in config.ROBOT_ACTIONS]
+    
+    @app.callback(
+        Output("robot-action-feedback", "children", allow_duplicate=True),
+        [Input(button_id, "n_clicks") for button_id in action_button_ids],
+        prevent_initial_call=True
+    )
+    def handle_action_buttons(*n_clicks_list):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return no_update
+        
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        # 从按钮ID中提取动作ID
+        if triggered_id.startswith("action-"):
+            action_id = triggered_id.replace("action-", "")
+            
+            # 查找动作名称
+            action_name = action_id
+            for action in config.ROBOT_ACTIONS:
+                if action['id'] == action_id:
+                    action_name = action['name']
+                    break
+            
+            success = ros_handler.send_force_action_command(action_id)
+            if success:
+                return html.Div(f"已发送动作指令: {action_name} ({action_id})", className="alert alert-success")
+            else:
+                return html.Div(f"动作指令发送失败: {action_name}", className="alert alert-danger")
+        
+        return no_update
